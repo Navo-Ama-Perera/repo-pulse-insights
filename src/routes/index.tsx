@@ -5,12 +5,13 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import { Clock, TrendingUp, Zap, ShieldAlert, ArrowUpRight } from "lucide-react";
+import { useState } from "react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -19,14 +20,23 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Portfolio-level view of BA impact analyses, module volatility, and hours saved through automated change assessment.",
+          "Portfolio-level reporting: analyses executed, risk distribution, volatile modules, and hours saved.",
       },
     ],
   }),
   component: Overview,
 });
 
-const analysesOverTime = [
+const PURPLE = "#8B5CF6";
+const CYAN = "#22D3EE";
+const GREEN = "#10B981";
+const AMBER = "#F59E0B";
+const RED = "#EF4444";
+const GRAY = "#CBD5E1";
+const INK = "#0F172A";
+const SUBTEXT = "#64748B";
+
+const analyses = [
   { m: "Jan", runs: 18, saved: 42 },
   { m: "Feb", runs: 24, saved: 58 },
   { m: "Mar", runs: 31, saved: 74 },
@@ -39,225 +49,324 @@ const analysesOverTime = [
 ];
 
 const volatility = [
-  { mod: "Payments", score: 92 },
-  { mod: "Authentication", score: 78 },
-  { mod: "Checkout", score: 71 },
-  { mod: "Search", score: 54 },
-  { mod: "Notifications", score: 41 },
-  { mod: "Profile", score: 28 },
+  { mod: "Payments", score: 92, current: true },
+  { mod: "Authentication", score: 78, current: false },
+  { mod: "Checkout", score: 71, current: false },
+  { mod: "Search", score: 54, current: false },
+  { mod: "Notifications", score: 41, current: false },
+  { mod: "Profile", score: 28, current: false },
 ];
 
-const recentAnalyses = [
+const riskDist = [
+  { label: "Low", value: 118, color: GREEN },
+  { label: "Elevated", value: 74, color: AMBER },
+  { label: "High", value: 25, color: RED },
+];
+
+const recent = [
   { repo: "payment-service", change: "Add 3DS challenge for EU cards", risk: 82, when: "12m ago" },
   { repo: "core-auth-api", change: "Rotate JWT signing keys quarterly", risk: 64, when: "1h ago" },
   { repo: "ecommerce-frontend", change: "New guest-checkout flow", risk: 47, when: "3h ago" },
   { repo: "payment-service", change: "Refund SLA reduced to 24h", risk: 71, when: "yesterday" },
+  { repo: "notifications-worker", change: "SMS provider fallback logic", risk: 33, when: "2 days ago" },
 ];
 
-function StatCard({
+function riskColor(v: number) {
+  if (v >= 75) return RED;
+  if (v >= 50) return AMBER;
+  return GREEN;
+}
+
+function Card({
+  title,
+  right,
+  children,
+  className = "",
+}: {
+  title?: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`light-card p-5 ${className}`}>
+      {(title || right) && (
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-sm font-semibold" style={{ color: INK }}>
+            {title}
+          </div>
+          {right}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function FilterPill({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const opts = ["This Month", "This Quarter", "YTD", "All time"];
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="text-xs rounded-md border px-2 py-1 bg-white"
+      style={{ borderColor: "#E2E8F0", color: SUBTEXT }}
+    >
+      {opts.map((o) => (
+        <option key={o}>{o}</option>
+      ))}
+    </select>
+  );
+}
+
+function KPI({
   label,
   value,
-  sub,
-  icon: Icon,
-  accent,
+  trend,
+  trendColor,
 }: {
   label: string;
   value: string;
-  sub: string;
-  icon: React.ComponentType<{ className?: string }>;
-  accent: "cyan" | "purple" | "green" | "amber";
+  trend: string;
+  trendColor: string;
 }) {
-  const accents = {
-    cyan: "from-[oklch(0.85_0.16_205)] to-[oklch(0.55_0.15_220)]",
-    purple: "from-[oklch(0.68_0.24_300)] to-[oklch(0.50_0.22_310)]",
-    green: "from-[oklch(0.78_0.18_155)] to-[oklch(0.55_0.16_165)]",
-    amber: "from-[oklch(0.80_0.18_60)] to-[oklch(0.60_0.18_45)]",
-  };
   return (
-    <div className="glass-card rounded-2xl p-5 relative overflow-hidden">
-      <div className={`absolute -top-10 -right-10 h-32 w-32 rounded-full bg-gradient-to-br ${accents[accent]} opacity-20 blur-2xl`} />
-      <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
-        <div className={`h-8 w-8 rounded-lg bg-gradient-to-br ${accents[accent]} flex items-center justify-center`}>
-          <Icon className="h-4 w-4 text-[oklch(0.14_0.03_265)]" />
-        </div>
+    <div className="light-card p-5">
+      <div className="text-xs font-medium uppercase tracking-wider" style={{ color: SUBTEXT }}>
+        {label}
       </div>
-      <div className="mt-3 font-mono text-3xl font-semibold tracking-tight">{value}</div>
-      <div className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
-        <ArrowUpRight className="h-3 w-3 text-[oklch(0.78_0.18_155)]" />
-        {sub}
+      <div
+        className="mt-3 text-4xl font-bold tracking-tight tabular-nums"
+        style={{ color: INK }}
+      >
+        {value}
+      </div>
+      <div
+        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
+        style={{ color: trendColor, background: trendColor + "1A" }}
+      >
+        {trend}
       </div>
     </div>
   );
 }
 
 function Overview() {
+  const [range, setRange] = useState("YTD");
+
+  const totalRisk = riskDist.reduce((a, b) => a + b.value, 0);
+
   return (
-    <div className="p-6 md:p-10 pb-28 md:pb-10 max-w-[1400px]">
-      <header className="mb-8">
-        <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-          Workspace / Portfolio
-        </div>
-        <h1 className="mt-2 text-3xl md:text-4xl font-semibold tracking-tight">
-          BA Performance <span className="neon-text">Overview</span>
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground max-w-2xl">
-          Live pulse across your analyst portfolio — impact runs, volatile system surfaces, and
-          reclaimed hours from automated change assessment.
-        </p>
-      </header>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Analyses this qtr" value="217" sub="+34% vs Q2" icon={Zap} accent="cyan" />
-        <StatCard label="Avg risk score" value="58.4" sub="−6 pts trailing 30d" icon={ShieldAlert} accent="purple" />
-        <StatCard label="Hours saved" value="1,284" sub="+189 this month" icon={Clock} accent="green" />
-        <StatCard label="Repos connected" value="12" sub="3 healthy scans today" icon={TrendingUp} accent="amber" />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="glass-card rounded-2xl p-5 lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                Impact Analyses Executed
-              </div>
-              <div className="text-lg font-semibold">Runs & hours saved · YTD</div>
+    <div className="light-surface">
+      <div className="p-6 md:p-10 pb-28 md:pb-10 max-w-[1400px]">
+        <header className="mb-8 flex items-end justify-between flex-wrap gap-4">
+          <div>
+            <div className="text-xs uppercase tracking-[0.24em]" style={{ color: SUBTEXT }}>
+              Workspace / Portfolio
             </div>
-            <div className="flex gap-3 text-xs">
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-[oklch(0.85_0.16_205)]" /> Runs
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-[oklch(0.68_0.24_300)]" /> Hours saved
-              </span>
-            </div>
+            <h1 className="mt-2 text-3xl md:text-4xl font-bold tracking-tight" style={{ color: INK }}>
+              BA Performance Overview
+            </h1>
+            <p className="mt-2 text-sm max-w-2xl" style={{ color: SUBTEXT }}>
+              Reporting view across your analyst portfolio — impact runs, risk mix, volatile
+              modules, and reclaimed hours.
+            </p>
           </div>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={analysesOverTime}>
-                <defs>
-                  <linearGradient id="gRuns" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="oklch(0.85 0.16 205)" stopOpacity={0.7} />
-                    <stop offset="100%" stopColor="oklch(0.85 0.16 205)" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gSaved" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="oklch(0.68 0.24 300)" stopOpacity={0.6} />
-                    <stop offset="100%" stopColor="oklch(0.68 0.24 300)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="oklch(0.55 0.10 260 / 0.12)" vertical={false} />
-                <XAxis dataKey="m" stroke="oklch(0.68 0.03 255)" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis stroke="oklch(0.68 0.03 255)" fontSize={11} tickLine={false} axisLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    background: "oklch(0.20 0.03 265)",
-                    border: "1px solid oklch(0.55 0.10 260 / 0.3)",
-                    borderRadius: 10,
-                    fontSize: 12,
-                  }}
-                />
-                <Area type="monotone" dataKey="runs" stroke="oklch(0.85 0.16 205)" strokeWidth={2} fill="url(#gRuns)" />
-                <Area type="monotone" dataKey="saved" stroke="oklch(0.68 0.24 300)" strokeWidth={2} fill="url(#gSaved)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          <FilterPill value={range} onChange={setRange} />
+        </header>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <KPI label="Analyses this qtr" value="217" trend="+34% vs Q2" trendColor={PURPLE} />
+          <KPI label="Avg risk score" value="58.4" trend="−6 pts vs 30d" trendColor={GREEN} />
+          <KPI label="Hours saved" value="1,284" trend="+189 this month" trendColor={CYAN} />
+          <KPI label="Repos connected" value="12" trend="3 healthy scans today" trendColor={SUBTEXT} />
         </div>
 
-        <div className="glass-card rounded-2xl p-5">
-          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Hours saved tracker
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <div className="font-mono text-5xl font-semibold neon-text">1,284</div>
-            <div className="text-sm text-muted-foreground">hrs</div>
-          </div>
-          <div className="mt-3 text-xs text-muted-foreground">
-            Equivalent to ~32 BA work-weeks reclaimed.
-          </div>
-          <div className="mt-5 h-3 rounded-full bg-[oklch(0.24_0.03_265)] overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-[oklch(0.85_0.16_205)] to-[oklch(0.68_0.24_300)]"
-              style={{ width: "72%" }}
-            />
-          </div>
-          <div className="mt-2 flex justify-between text-[10px] uppercase tracking-widest text-muted-foreground">
-            <span>Goal 1,800 hrs</span>
-            <span>72%</span>
-          </div>
-
-          <div className="mt-6 space-y-3">
-            {[
-              ["This week", "+62 hrs"],
-              ["Last week", "+48 hrs"],
-              ["Avg per analysis", "5.9 hrs"],
-            ].map(([k, v]) => (
-              <div key={k} className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{k}</span>
-                <span className="font-mono">{v}</span>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+          <Card
+            title="Impact Analyses Executed — Runs & Hours Saved · YTD"
+            className="lg:col-span-2"
+            right={
+              <div className="flex gap-4 text-xs" style={{ color: SUBTEXT }}>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full" style={{ background: PURPLE }} /> Runs
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full" style={{ background: CYAN }} /> Hours saved
+                </span>
               </div>
-            ))}
-          </div>
-        </div>
+            }
+          >
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={analyses}>
+                  <defs>
+                    <linearGradient id="pRuns" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={PURPLE} stopOpacity={0.35} />
+                      <stop offset="100%" stopColor={PURPLE} stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="pSaved" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={CYAN} stopOpacity={0.3} />
+                      <stop offset="100%" stopColor={CYAN} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="#EEF2F7" vertical={false} />
+                  <XAxis dataKey="m" stroke={SUBTEXT} fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke={SUBTEXT} fontSize={11} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      background: "#fff",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: 10,
+                      fontSize: 12,
+                      color: INK,
+                    }}
+                  />
+                  <Area type="monotone" dataKey="runs" stroke={PURPLE} strokeWidth={2.5} fill="url(#pRuns)" />
+                  <Area type="monotone" dataKey="saved" stroke={CYAN} strokeWidth={2.5} fill="url(#pSaved)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
 
-        <div className="glass-card rounded-2xl p-5 lg:col-span-2">
-          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Most volatile system modules
-          </div>
-          <div className="text-lg font-semibold mb-4">Change frequency × blast radius</div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={volatility} layout="vertical" margin={{ left: 10 }}>
-                <defs>
-                  <linearGradient id="gBar" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="oklch(0.68 0.24 300)" />
-                    <stop offset="100%" stopColor="oklch(0.85 0.16 205)" />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="oklch(0.55 0.10 260 / 0.12)" horizontal={false} />
-                <XAxis type="number" stroke="oklch(0.68 0.03 255)" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis type="category" dataKey="mod" stroke="oklch(0.90 0.02 250)" fontSize={12} width={110} tickLine={false} axisLine={false} />
-                <Tooltip
-                  cursor={{ fill: "oklch(0.55 0.10 260 / 0.08)" }}
-                  contentStyle={{
-                    background: "oklch(0.20 0.03 265)",
-                    border: "1px solid oklch(0.55 0.10 260 / 0.3)",
-                    borderRadius: 10,
-                    fontSize: 12,
-                  }}
-                />
-                <Bar dataKey="score" fill="url(#gBar)" radius={[0, 6, 6, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="glass-card rounded-2xl p-5">
-          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground mb-3">
-            Recent impact runs
-          </div>
-          <ul className="divide-y divide-border/60">
-            {recentAnalyses.map((a) => (
-              <li key={a.change} className="py-3 flex items-start gap-3">
-                <div
-                  className={`mt-1 h-8 w-8 rounded-lg flex items-center justify-center font-mono text-xs font-semibold ${
-                    a.risk >= 75
-                      ? "bg-[oklch(0.65_0.24_25/0.15)] text-[oklch(0.78_0.20_25)]"
-                      : a.risk >= 55
-                      ? "bg-[oklch(0.80_0.18_60/0.15)] text-[oklch(0.85_0.16_65)]"
-                      : "bg-[oklch(0.78_0.18_155/0.15)] text-[oklch(0.82_0.18_155)]"
-                  }`}
-                >
-                  {a.risk}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm truncate">{a.change}</div>
-                  <div className="text-[11px] text-muted-foreground font-mono">
-                    {a.repo} · {a.when}
+          <Card title="Risk Score Distribution" right={<FilterPill value={range} onChange={setRange} />}>
+            <div className="flex flex-col items-center">
+              <RiskDonut data={riskDist} total={totalRisk} />
+              <div className="mt-4 w-full space-y-2">
+                {riskDist.map((r) => (
+                  <div key={r.label} className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2" style={{ color: INK }}>
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: r.color }} />
+                      {r.label} risk
+                    </span>
+                    <span className="tabular-nums font-medium" style={{ color: SUBTEXT }}>
+                      {r.value} · {Math.round((r.value / totalRisk) * 100)}%
+                    </span>
                   </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+                ))}
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Card
+            title="Most Volatile System Modules"
+            className="lg:col-span-2"
+            right={<span className="text-xs" style={{ color: SUBTEXT }}>Change frequency</span>}
+          >
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={volatility} layout="vertical" margin={{ left: 10 }}>
+                  <CartesianGrid stroke="#EEF2F7" horizontal={false} />
+                  <XAxis type="number" stroke={SUBTEXT} fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="mod"
+                    stroke={INK}
+                    fontSize={12}
+                    width={110}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "#F1F5F9" }}
+                    contentStyle={{
+                      background: "#fff",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: 10,
+                      fontSize: 12,
+                      color: INK,
+                    }}
+                  />
+                  <Bar dataKey="score" radius={[0, 6, 6, 0]}>
+                    {volatility.map((v, i) => (
+                      <Cell key={i} fill={v.current ? PURPLE : GRAY} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
+          <Card title="Recent Impact Runs">
+            <ul className="-mx-2">
+              {recent.map((a) => (
+                <li
+                  key={a.change}
+                  className="flex items-start gap-3 px-2 py-3 rounded-lg cursor-pointer hover:bg-[#F5F3FF] border-b last:border-b-0"
+                  style={{ borderColor: "#F1F5F9" }}
+                >
+                  <div
+                    className="mt-0.5 h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold tabular-nums shrink-0"
+                    style={{
+                      background: riskColor(a.risk) + "1A",
+                      color: riskColor(a.risk),
+                    }}
+                  >
+                    {a.risk}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium truncate" style={{ color: INK }}>
+                      {a.change}
+                    </div>
+                    <div className="text-[11px] font-mono mt-0.5" style={{ color: SUBTEXT }}>
+                      {a.repo} · {a.when}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RiskDonut({
+  data,
+  total,
+}: {
+  data: { label: string; value: number; color: string }[];
+  total: number;
+}) {
+  const size = 180;
+  const r = 70;
+  const stroke = 22;
+  const c = 2 * Math.PI * r;
+  let offset = 0;
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size / 2} cy={size / 2} r={r} stroke="#F1F5F9" strokeWidth={stroke} fill="none" />
+        {data.map((d, i) => {
+          const len = (d.value / total) * c;
+          const el = (
+            <circle
+              key={i}
+              cx={size / 2}
+              cy={size / 2}
+              r={r}
+              stroke={d.color}
+              strokeWidth={stroke}
+              fill="none"
+              strokeDasharray={`${len} ${c - len}`}
+              strokeDashoffset={-offset}
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+              strokeLinecap="butt"
+            />
+          );
+          offset += len;
+          return el;
+        })}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <div className="text-2xl font-bold tabular-nums" style={{ color: INK }}>
+          {total}
+        </div>
+        <div className="text-[10px] uppercase tracking-widest" style={{ color: SUBTEXT }}>
+          Analyses
         </div>
       </div>
     </div>

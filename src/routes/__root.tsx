@@ -11,7 +11,8 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { AppSidebar, MobileNav } from "../components/AppSidebar";
+import { AppSidebar, MobileNav, MainShell } from "../components/AppSidebar";
+import { SidebarProvider } from "../lib/sidebar-store";
 import { Toaster } from "../components/ui/sonner";
 
 function NotFoundComponent() {
@@ -120,14 +121,16 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen grid-bg">
-        <AppSidebar />
-        <MobileNav />
-        <main className="md:pl-64">
-          <Outlet />
-        </main>
-        <Toaster />
-      </div>
+      <SidebarProvider>
+        <div className="min-h-screen">
+          <AppSidebar />
+          <MobileNav />
+          <MainShell>
+            <Outlet />
+          </MainShell>
+          <Toaster />
+        </div>
+      </SidebarProvider>
     </QueryClientProvider>
   );
 }
