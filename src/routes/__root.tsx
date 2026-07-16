@@ -11,7 +11,8 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { AppSidebar, MobileNav } from "../components/AppSidebar";
+import { AppSidebar, MobileNav, MainShell } from "../components/AppSidebar";
+import { SidebarProvider } from "../lib/sidebar-store";
 import { Toaster } from "../components/ui/sonner";
 
 function NotFoundComponent() {
