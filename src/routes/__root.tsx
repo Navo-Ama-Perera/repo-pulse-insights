@@ -18,9 +18,9 @@ import { Toaster } from "../components/ui/sonner";
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center glass-card rounded-2xl p-10">
-        <h1 className="text-7xl font-bold neon-text">404</h1>
-        <h2 className="mt-4 text-xl font-semibold">Signal lost</h2>
+      <div className="max-w-md text-center light-card p-10">
+        <h1 className="text-6xl font-bold text-[#1E40AF]">404</h1>
+        <h2 className="mt-4 text-xl font-semibold">Page not found</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           That route isn't wired up in RepoPulse.
         </p>
@@ -42,7 +42,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   }, [error]);
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="max-w-md text-center glass-card rounded-2xl p-8">
+      <div className="max-w-md text-center light-card p-8">
         <h1 className="text-xl font-semibold">This page didn't load</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Something misfired. Try again or head back.
