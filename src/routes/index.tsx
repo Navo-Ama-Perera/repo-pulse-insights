@@ -176,7 +176,7 @@ function Overview() {
         </header>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-          <KPI label="Analyses this qtr" value="217" trend="+34% vs Q2" trendColor={PURPLE} />
+          <KPI label="Analyses this qtr" value="217" trend="+34% vs Q2" trendColor={NAVY} />
           <KPI label="Avg risk score" value="58.4" trend="−6 pts vs 30d" trendColor={GREEN} />
           <KPI label="Hours saved" value="1,284" trend="+189 this month" trendColor={CYAN} />
           <KPI label="Repos connected" value="12" trend="3 healthy scans today" trendColor={SUBTEXT} />
@@ -189,7 +189,7 @@ function Overview() {
             right={
               <div className="flex gap-4 text-xs" style={{ color: SUBTEXT }}>
                 <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full" style={{ background: PURPLE }} /> Runs
+                  <span className="h-2 w-2 rounded-full" style={{ background: NAVY }} /> Runs
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full" style={{ background: CYAN }} /> Hours saved
@@ -202,8 +202,8 @@ function Overview() {
                 <AreaChart data={analyses}>
                   <defs>
                     <linearGradient id="pRuns" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={PURPLE} stopOpacity={0.35} />
-                      <stop offset="100%" stopColor={PURPLE} stopOpacity={0} />
+                      <stop offset="0%" stopColor={NAVY} stopOpacity={0.35} />
+                      <stop offset="100%" stopColor={NAVY} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="pSaved" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={CYAN} stopOpacity={0.3} />
@@ -222,7 +222,7 @@ function Overview() {
                       color: INK,
                     }}
                   />
-                  <Area type="monotone" dataKey="runs" stroke={PURPLE} strokeWidth={2.5} fill="url(#pRuns)" />
+                  <Area type="monotone" dataKey="runs" stroke={NAVY} strokeWidth={2.5} fill="url(#pRuns)" />
                   <Area type="monotone" dataKey="saved" stroke={CYAN} strokeWidth={2.5} fill="url(#pSaved)" />
                 </AreaChart>
               </ResponsiveContainer>
@@ -281,7 +281,7 @@ function Overview() {
                   />
                   <Bar dataKey="score" radius={[0, 6, 6, 0]}>
                     {volatility.map((v, i) => (
-                      <Cell key={i} fill={v.current ? PURPLE : GRAY} />
+                      <Cell key={i} fill={v.current ? NAVY : GRAY} />
                     ))}
                   </Bar>
                 </BarChart>
