@@ -212,8 +212,8 @@ function Overview() {
                       color: INK,
                     }}
                   />
-                  <Area type="monotone" dataKey="runs" stroke={NAVY} strokeWidth={2.5} fill="url(#pRuns)" />
-                  <Area type="monotone" dataKey="saved" stroke={CYAN} strokeWidth={2.5} fill="url(#pSaved)" />
+                  <Area type="monotone" dataKey="runs" stroke={NAVY} strokeWidth={2.5} fill={NAVY} fillOpacity={0.08} />
+                  <Area type="monotone" dataKey="saved" stroke={CYAN} strokeWidth={2.5} fill={CYAN} fillOpacity={0.08} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
