@@ -284,7 +284,7 @@ function Overview() {
               {recent.map((a) => (
                 <li
                   key={a.change}
-                  className="flex items-start gap-3 px-2 py-3 rounded-lg cursor-pointer hover:bg-[#F5F3FF] border-b last:border-b-0"
+                  className="flex items-start gap-3 px-2 py-3 rounded-lg cursor-pointer hover:bg-[#F8FAFC] border-b last:border-b-0"
                   style={{ borderColor: "#F1F5F9" }}
                 >
                   <div
