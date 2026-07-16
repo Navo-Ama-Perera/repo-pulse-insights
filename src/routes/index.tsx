@@ -200,16 +200,6 @@ function Overview() {
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={analyses}>
-                  <defs>
-                    <linearGradient id="pRuns" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={NAVY} stopOpacity={0.35} />
-                      <stop offset="100%" stopColor={NAVY} stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="pSaved" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={CYAN} stopOpacity={0.3} />
-                      <stop offset="100%" stopColor={CYAN} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
                   <CartesianGrid stroke="#EEF2F7" vertical={false} />
                   <XAxis dataKey="m" stroke={SUBTEXT} fontSize={11} tickLine={false} axisLine={false} />
                   <YAxis stroke={SUBTEXT} fontSize={11} tickLine={false} axisLine={false} />
