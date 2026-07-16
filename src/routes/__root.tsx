@@ -18,9 +18,9 @@ import { Toaster } from "../components/ui/sonner";
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center glass-card rounded-2xl p-10">
-        <h1 className="text-7xl font-bold neon-text">404</h1>
-        <h2 className="mt-4 text-xl font-semibold">Signal lost</h2>
+      <div className="max-w-md text-center light-card p-10">
+        <h1 className="text-6xl font-bold text-[#1E40AF]">404</h1>
+        <h2 className="mt-4 text-xl font-semibold">Page not found</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           That route isn't wired up in RepoPulse.
         </p>
@@ -42,7 +42,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   }, [error]);
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="max-w-md text-center glass-card rounded-2xl p-8">
+      <div className="max-w-md text-center light-card p-8">
         <h1 className="text-xl font-semibold">This page didn't load</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Something misfired. Try again or head back.
@@ -81,7 +81,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         property: "og:description",
         content:
-          "Repo-aware impact analysis, risk scoring, and BA performance analytics in one dark, high-tech workspace.",
+          "Repo-aware impact analysis, risk scoring, and BA performance analytics in one clean workspace.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -93,7 +93,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap",
       },
     ],
   }),
@@ -105,7 +105,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <head>
         <HeadContent />
       </head>
