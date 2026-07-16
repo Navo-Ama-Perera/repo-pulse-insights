@@ -50,14 +50,14 @@
 
 :root {
   --radius: 0.75rem;
-  /* Deep slate base */
-  --background: oklch(0.16 0.028 265);
+  /* Deep near-black navy */
+  --background: oklch(0.15 0.025 265);
   --foreground: oklch(0.96 0.01 250);
 
-  /* Glass card */
-  --card: oklch(0.22 0.03 265 / 0.55);
+  /* Card surface */
+  --card: oklch(0.19 0.028 265);
   --card-foreground: oklch(0.96 0.01 250);
-  --glass: oklch(0.22 0.03 265 / 0.55);
+  --glass: oklch(0.19 0.028 265);
 
   --popover: oklch(0.20 0.03 265);
   --popover-foreground: oklch(0.96 0.01 250);
