@@ -27,7 +27,7 @@ export const Route = createFileRoute("/")({
   component: Overview,
 });
 
-const PURPLE = "#8B5CF6";
+const NAVY = "#1E40AF";
 const CYAN = "#22D3EE";
 const GREEN = "#10B981";
 const AMBER = "#F59E0B";
