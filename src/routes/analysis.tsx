@@ -191,46 +191,156 @@ function Analysis() {
           <div className="text-[11px] uppercase tracking-[0.16em] mb-4 font-semibold" style={{ color: SUBTEXT }}>
             Input · configure analysis
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-medium" style={{ color: SUBTEXT }}>Select Repository</label>
-              <Select
-                value={repo}
-                onValueChange={(v) => {
-                  setRepo(v as keyof typeof REPOS);
-                  setBranch(REPOS[v as keyof typeof REPOS][0]);
-                }}
-              >
-                <SelectTrigger className="mt-2 h-10 bg-white border-[#E5E7EB]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.keys(REPOS).map((r) => (
-                    <SelectItem key={r} value={r} className="font-mono text-sm">
-                      {r}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
-                Select Branch <span className="text-[10px] opacity-70">(from {repo})</span>
-              </label>
-              <Select value={branch} onValueChange={setBranch}>
-                <SelectTrigger className="mt-2 h-10 bg-white border-[#E5E7EB]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((b) => (
-                    <SelectItem key={b} value={b} className="font-mono text-sm">
-                      {b}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="mb-5">
+            <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+              Analysis Mode
+            </label>
+            <div
+              className="mt-2 inline-flex flex-wrap gap-1 p-1 rounded-full border bg-[#F8FAFC]"
+              style={{ borderColor: BORDER }}
+              role="tablist"
+            >
+              {MODES.map((m) => {
+                const active = mode === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setMode(m.id)}
+                    className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-colors ${
+                      active ? "bg-[#1E40AF] text-white" : "text-[#475569] hover:bg-white"
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
+
+          {showDocs && (
+            <div className="mb-4">
+              <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+                Select Document(s)
+              </label>
+              <Popover open={docPickerOpen} onOpenChange={setDocPickerOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    className="mt-2 w-full h-10 px-3 rounded-md border bg-white flex items-center justify-between text-sm"
+                    style={{ borderColor: BORDER, color: selectedDocs.length ? INK : SUBTEXT }}
+                  >
+                    <span className="truncate">
+                      {selectedDocs.length
+                        ? `${selectedDocs.length} document${selectedDocs.length === 1 ? "" : "s"} selected`
+                        : "Search and select documents…"}
+                    </span>
+                    <ChevronsUpDown className="h-4 w-4 shrink-0" style={{ color: SUBTEXT }} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-0 bg-white">
+                  <div className="p-2 border-b" style={{ borderColor: BORDER }}>
+                    <Input
+                      value={docSearch}
+                      onChange={(e) => setDocSearch(e.target.value)}
+                      placeholder="Search folder or file name…"
+                      className="h-9 bg-white border-[#E5E7EB]"
+                    />
+                  </div>
+                  <ul className="max-h-60 overflow-auto py-1">
+                    {filteredDocs.length === 0 && (
+                      <li className="px-3 py-3 text-xs" style={{ color: SUBTEXT }}>
+                        No documents match "{docSearch}".
+                      </li>
+                    )}
+                    {filteredDocs.map((o) => (
+                      <li key={o.id}>
+                        <label className="flex items-center gap-2 px-3 py-2 hover:bg-[#F8FAFC] cursor-pointer">
+                          <Checkbox
+                            checked={selectedDocs.includes(o.id)}
+                            onCheckedChange={() => toggleDoc(o.id)}
+                          />
+                          <span className="text-[12px] font-mono truncate" style={{ color: INK }}>
+                            {o.label}
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </PopoverContent>
+              </Popover>
+
+              {selectedDocs.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {selectedDocs.map((id) => {
+                    const opt = docOptions.find((o) => o.id === id);
+                    if (!opt) return null;
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-mono bg-[#EEF2FF] text-[#1E40AF]"
+                      >
+                        {opt.label}
+                        <button onClick={() => toggleDoc(id)} aria-label={`Remove ${opt.label}`}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              <button
+                onClick={() => setUploadOpen(true)}
+                className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[#1E40AF] hover:underline"
+              >
+                <Plus className="h-3 w-3" /> Upload new document
+              </button>
+            </div>
+          )}
+
+          {showCode && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium" style={{ color: SUBTEXT }}>Select Repository</label>
+                <Select
+                  value={repo}
+                  onValueChange={(v) => {
+                    setRepo(v as keyof typeof REPOS);
+                    setBranch(REPOS[v as keyof typeof REPOS][0]);
+                  }}
+                >
+                  <SelectTrigger className="mt-2 h-10 bg-white border-[#E5E7EB]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(REPOS).map((r) => (
+                      <SelectItem key={r} value={r} className="font-mono text-sm">
+                        {r}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+                  Select Branch <span className="text-[10px] opacity-70">(from {repo})</span>
+                </label>
+                <Select value={branch} onValueChange={setBranch}>
+                  <SelectTrigger className="mt-2 h-10 bg-white border-[#E5E7EB]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b} value={b} className="font-mono text-sm">
+                        {b}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
 
           <div className="mt-5">
             <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
