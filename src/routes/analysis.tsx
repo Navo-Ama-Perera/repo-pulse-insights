@@ -429,39 +429,81 @@ function Analysis() {
                 </div>
               </div>
 
-              {/* Features */}
-              <div className="rounded-md p-5 bg-white border lg:col-span-2" style={{ borderColor: BORDER }}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm font-semibold" style={{ color: INK }}>Impacted Business Features</div>
-                  <span className="text-[11px]" style={{ color: SUBTEXT }}>
-                    {FEATURES.length} touched · {repo}
-                  </span>
-                </div>
-                <ul className="space-y-1.5">
-                  {FEATURES.map((f) => {
-                    const color = f.severity === "High" ? "#EF4444" : f.severity === "Medium" ? "#F59E0B" : "#10B981";
-                    const bg = f.severity === "High" ? "#FEE2E2" : f.severity === "Medium" ? "#FEF3C7" : "#DCFCE7";
-                    return (
-                      <li
-                        key={f.name}
-                        className="flex items-center justify-between rounded-md px-3 py-2.5 border"
-                        style={{ borderColor: BORDER }}
-                      >
-                        <span className="text-sm" style={{ color: INK }}>{f.name}</span>
-                        <span
-                          className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded"
-                          style={{ color, background: bg }}
+              {/* Matched requirements */}
+              {showDocs && (
+                <div className="rounded-md p-5 bg-white border lg:col-span-2" style={{ borderColor: BORDER }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-sm font-semibold" style={{ color: INK }}>Matched Requirements</div>
+                    <span className="text-[11px]" style={{ color: SUBTEXT }}>
+                      {MATCHED_REQUIREMENTS.length} matches
+                    </span>
+                  </div>
+                  <ul className="space-y-1.5">
+                    {MATCHED_REQUIREMENTS.map((r) => {
+                      const direct = r.relevance === "Direct Match";
+                      return (
+                        <li
+                          key={r.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-md px-3 py-2.5 border"
+                          style={{ borderColor: BORDER }}
                         >
-                          {f.severity}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
+                          <span className="text-sm min-w-0" style={{ color: INK }}>
+                            <span className="font-mono font-semibold" style={{ color: NAVY }}>{r.id}</span>
+                            {" — "}
+                            {r.title}
+                          </span>
+                          <span
+                            className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded"
+                            style={
+                              direct
+                                ? { color: "#1E40AF", background: "#EEF2FF" }
+                                : { color: "#475569", background: "#F1F5F9" }
+                            }
+                          >
+                            {r.relevance}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              {/* Features */}
+              {showCode && (
+                <div className="rounded-md p-5 bg-white border lg:col-span-2" style={{ borderColor: BORDER }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-sm font-semibold" style={{ color: INK }}>Impacted Business Features</div>
+                    <span className="text-[11px]" style={{ color: SUBTEXT }}>
+                      {FEATURES.length} touched · {repo}
+                    </span>
+                  </div>
+                  <ul className="space-y-1.5">
+                    {FEATURES.map((f) => {
+                      const color = f.severity === "High" ? "#EF4444" : f.severity === "Medium" ? "#F59E0B" : "#10B981";
+                      const bg = f.severity === "High" ? "#FEE2E2" : f.severity === "Medium" ? "#FEF3C7" : "#DCFCE7";
+                      return (
+                        <li
+                          key={f.name}
+                          className="flex items-center justify-between rounded-md px-3 py-2.5 border"
+                          style={{ borderColor: BORDER }}
+                        >
+                          <span className="text-sm" style={{ color: INK }}>{f.name}</span>
+                          <span
+                            className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded"
+                            style={{ color, background: bg }}
+                          >
+                            {f.severity}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
 
               {/* Affected files */}
-              {showFiles && (
+              {showCode && showFiles && (
                 <div className="rounded-md p-5 bg-white border lg:col-span-3" style={{ borderColor: BORDER }}>
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-sm font-semibold" style={{ color: INK }}>Affected Code Paths</div>
