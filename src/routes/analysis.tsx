@@ -528,6 +528,31 @@ function Analysis() {
           )}
         </section>
       </div>
+
+      <UploadDocumentModal
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        folders={INITIAL_FOLDERS}
+        defaultFolderId={null}
+        onUploaded={({ fileName, folderId, requirements }) =>
+          setDocs((d) => [
+            ...d,
+            {
+              id: `d-${Date.now()}`,
+              name: fileName,
+              folderId,
+              status: "Indexed",
+              requirementCount: requirements,
+              uploadedAt: new Date().toLocaleDateString("en-GB", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              }),
+              requirements: [],
+            },
+          ])
+        }
+      />
     </div>
   );
 }
