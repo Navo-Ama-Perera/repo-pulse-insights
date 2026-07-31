@@ -158,7 +158,7 @@ function Overview() {
 
   return (
     <div className="light-surface">
-      <div className="p-6 md:p-10 pb-28 md:pb-10 max-w-[1400px]">
+      <div className="p-4 sm:p-6 md:p-10 pb-24 md:pb-10 max-w-[1400px]">
         <header className="mb-8 flex items-end justify-between flex-wrap gap-4">
           <div>
             <div className="text-xs uppercase tracking-[0.24em]" style={{ color: SUBTEXT }}>
@@ -175,7 +175,7 @@ function Overview() {
           <FilterPill value={range} onChange={setRange} />
         </header>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <KPI label="Analyses this qtr" value="217" trend="+34% vs Q2" trendColor={NAVY} />
           <KPI label="Avg risk score" value="58.4" trend="−6 pts vs 30d" trendColor={GREEN} />
           <KPI label="Hours saved" value="1,284" trend="+189 this month" trendColor={CYAN} />

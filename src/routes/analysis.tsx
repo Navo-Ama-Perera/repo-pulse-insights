@@ -172,7 +172,7 @@ function Analysis() {
 
   return (
     <div className="light-surface">
-      <div className="p-6 md:p-10 pb-28 md:pb-10 max-w-[1400px]">
+      <div className="p-4 sm:p-6 md:p-10 pb-24 md:pb-10 max-w-[1400px]">
         <header className="mb-6">
           <div className="text-xs uppercase tracking-[0.18em]" style={{ color: SUBTEXT }}>
             Workspace / Task
