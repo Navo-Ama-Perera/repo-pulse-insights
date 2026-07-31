@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +16,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Folder,
   FolderPlus,
   Upload,
@@ -27,12 +34,25 @@ import {
   ChevronDown,
   Loader2,
   Inbox,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { UploadDocumentModal } from "@/components/UploadDocumentModal";
 import {
-  INITIAL_DOCUMENTS,
-  INITIAL_FOLDERS,
+  listFolders,
+  listDocuments,
+  createFolder as apiCreateFolder,
+  renameFolder as apiRenameFolder,
+  deleteFolder as apiDeleteFolder,
+  moveDocument,
+  renameDocument,
+  deleteDocument,
+  getDocument,
+  type ApiDocument,
+} from "@/lib/api";
+import {
+  mapFolder,
+  mapDocument,
   type KbDocument,
   type KbFolder,
 } from "@/lib/knowledge-data";
@@ -46,11 +66,6 @@ export const Route = createFileRoute("/knowledge")({
         content:
           "Organize BRDs, SRS, and FRDs into project folders and track extracted requirements.",
       },
-      { property: "og:title", content: "Knowledge Base — RepoPulse" },
-      {
-        property: "og:description",
-        content: "Project document folders with parsed requirement extraction in RepoPulse.",
-      },
     ],
   }),
   component: KnowledgeBase,
@@ -59,6 +74,7 @@ export const Route = createFileRoute("/knowledge")({
 const INK = "#0F172A";
 const SUBTEXT = "#64748B";
 const BORDER = "#E5E7EB";
+const ROOT_VALUE = "__root__";
 
 function docIcon(name: string) {
   if (name.endsWith(".xlsx")) return FileSpreadsheet;
@@ -97,24 +113,31 @@ function StatusBadge({ status }: { status: KbDocument["status"] }) {
 
 function DocumentRow({
   doc,
-  folders,
-  onMove,
+  onMoveClick,
   onRename,
   onDelete,
+  onToggleExpand,
 }: {
   doc: KbDocument;
-  folders: KbFolder[];
-  onMove: (doc: KbDocument, folderId: string | null) => void;
+  onMoveClick: (doc: KbDocument) => void;
   onRename: (doc: KbDocument) => void;
   onDelete: (doc: KbDocument) => void;
+  onToggleExpand: (doc: KbDocument) => void;
 }) {
   const [open, setOpen] = useState(false);
   const Icon = docIcon(doc.name);
+
+  const handleToggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next) onToggleExpand(doc);
+  };
+
   return (
     <li className="border-b last:border-b-0" style={{ borderColor: BORDER }}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3">
         <button
-          onClick={() => setOpen((o) => !o)}
+          onClick={handleToggle}
           aria-label={open ? "Collapse requirements" : "Expand requirements"}
           className="p-1 rounded hover:bg-[#F1F5F9] shrink-0"
         >
@@ -130,9 +153,14 @@ function DocumentRow({
             {doc.name}
           </div>
           <div className="text-[11px] mt-0.5 flex flex-wrap gap-x-3" style={{ color: SUBTEXT }}>
-            <span>{doc.requirementCount} requirements extracted</span>
+            <span>
+              {doc.requirementCount} requirement{doc.requirementCount === 1 ? "" : "s"} extracted
+            </span>
             <span>Uploaded {doc.uploadedAt}</span>
           </div>
+          {doc.status === "Failed" && doc.errorMessage && (
+            <div className="text-[11px] mt-0.5 text-[#B91C1C]">{doc.errorMessage}</div>
+          )}
         </div>
         <StatusBadge status={doc.status} />
         <DropdownMenu>
@@ -144,17 +172,8 @@ function DocumentRow({
               <MoreHorizontal className="h-4 w-4" style={{ color: SUBTEXT }} />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48 bg-white">
-            <DropdownMenuItem onSelect={() => onMove(doc, null)}>
-              Move to Knowledge Base (root)
-            </DropdownMenuItem>
-            {folders
-              .filter((f) => f.id !== doc.folderId)
-              .map((f) => (
-                <DropdownMenuItem key={f.id} onSelect={() => onMove(doc, f.id)}>
-                  Move to {f.name}
-                </DropdownMenuItem>
-              ))}
+          <DropdownMenuContent align="end" className="w-40 bg-white">
+            <DropdownMenuItem onSelect={() => onMoveClick(doc)}>Move</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onRename(doc)}>Rename</DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => onDelete(doc)}
@@ -168,7 +187,11 @@ function DocumentRow({
 
       {open && (
         <div className="px-3 pb-3 pl-10">
-          {doc.requirements.length === 0 ? (
+          {!doc.requirementsLoaded && doc.status === "Indexed" ? (
+            <div className="text-xs flex items-center gap-2" style={{ color: SUBTEXT }}>
+              <Loader2 className="h-3 w-3 animate-spin" /> Loading requirements…
+            </div>
+          ) : doc.requirements.length === 0 ? (
             <div className="text-xs" style={{ color: SUBTEXT }}>
               No requirements extracted yet.
             </div>
@@ -181,7 +204,7 @@ function DocumentRow({
                   style={{ borderColor: BORDER, color: INK }}
                 >
                   <span className="font-mono font-semibold" style={{ color: "#1E40AF" }}>
-                    {r.id}
+                    {r.reqCode}
                   </span>
                   <span style={{ color: SUBTEXT }}>—</span>
                   <span>{r.title}</span>
@@ -196,45 +219,220 @@ function DocumentRow({
 }
 
 function KnowledgeBase() {
-  const [folders, setFolders] = useState<KbFolder[]>(INITIAL_FOLDERS);
-  const [documents, setDocuments] = useState<KbDocument[]>(INITIAL_DOCUMENTS);
-  const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+  const [folders, setFolders] = useState<KbFolder[]>([]);
+  const [documents, setDocuments] = useState<KbDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentFolder, setCurrentFolder] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+
   const [folderModal, setFolderModal] = useState(false);
   const [folderName, setFolderName] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
+
+  const [renameFolderModal, setRenameFolderModal] = useState<KbFolder | null>(null);
+  const [renameFolderName, setRenameFolderName] = useState("");
+  const [renamingFolder, setRenamingFolder] = useState(false);
+
+  const [moveDocModal, setMoveDocModal] = useState<KbDocument | null>(null);
+  const [moveTarget, setMoveTarget] = useState(ROOT_VALUE);
+  const [moving, setMoving] = useState(false);
+
   const [uploadOpen, setUploadOpen] = useState(false);
 
-  const activeFolder = folders.find((f) => f.id === currentFolder) ?? null;
-  const visibleDocs = useMemo(
-    () => documents.filter((d) => d.folderId === currentFolder),
-    [documents, currentFolder],
-  );
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [apiFolders, apiDocs] = await Promise.all([listFolders(), listDocuments()]);
+      setFolders(apiFolders.map(mapFolder));
+      setDocuments(apiDocs.map((d) => mapDocument(d)));
+    } catch (e) {
+      toast.error("Failed to load knowledge base", {
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const createFolder = () => {
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // Reset search when navigating between root / folder
+  useEffect(() => {
+    setSearch("");
+  }, [currentFolder]);
+
+  const activeFolder = folders.find((f) => f.id === currentFolder) ?? null;
+  const q = search.trim().toLowerCase();
+
+  const filteredFolders = useMemo(() => {
+    if (currentFolder != null) return [];
+    if (!q) return folders;
+    return folders.filter((f) => f.name.toLowerCase().includes(q));
+  }, [folders, currentFolder, q]);
+
+  const visibleDocs = useMemo(() => {
+    let docs = documents.filter((d) => d.folderId === currentFolder);
+    if (q) docs = docs.filter((d) => d.name.toLowerCase().includes(q));
+    return docs;
+  }, [documents, currentFolder, q]);
+
+  const folderLocationLabel = (folderId: number | null) => {
+    if (folderId == null) return "Knowledge Base (root)";
+    return folders.find((f) => f.id === folderId)?.name ?? "Unknown folder";
+  };
+
+  const createFolder = async () => {
     const name = folderName.trim();
     if (!name) return;
-    setFolders((f) => [...f, { id: `f-${Date.now()}`, name }]);
-    setFolderName("");
-    setFolderModal(false);
-    toast.success("Folder created", { description: name });
+    setCreatingFolder(true);
+    try {
+      const folder = await apiCreateFolder(name);
+      setFolders((prev) => [...prev, mapFolder(folder)]);
+      setFolderName("");
+      setFolderModal(false);
+      toast.success("Folder created", { description: name });
+    } catch (e) {
+      toast.error("Could not create folder", {
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+    } finally {
+      setCreatingFolder(false);
+    }
   };
 
-  const moveDoc = (doc: KbDocument, folderId: string | null) => {
-    setDocuments((docs) => docs.map((d) => (d.id === doc.id ? { ...d, folderId } : d)));
-    toast.success("Document moved");
+  const openRenameFolder = (f: KbFolder) => {
+    setRenameFolderName(f.name);
+    setRenameFolderModal(f);
   };
 
-  const renameDoc = (doc: KbDocument) => {
+  const submitRenameFolder = async () => {
+    if (!renameFolderModal) return;
+    const name = renameFolderName.trim();
+    if (!name) return;
+    setRenamingFolder(true);
+    try {
+      const updated = await apiRenameFolder(renameFolderModal.id, name);
+      setFolders((prev) => prev.map((f) => (f.id === updated.id ? mapFolder(updated) : f)));
+      setRenameFolderModal(null);
+      toast.success("Folder renamed", { description: name });
+    } catch (e) {
+      toast.error("Rename failed", {
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+    } finally {
+      setRenamingFolder(false);
+    }
+  };
+
+  const deleteFolder = async (f: KbFolder) => {
+    if (
+      !window.confirm(
+        `Delete folder “${f.name}”? Documents inside will move to Knowledge Base (root).`,
+      )
+    )
+      return;
+    try {
+      await apiDeleteFolder(f.id);
+      setFolders((prev) => prev.filter((x) => x.id !== f.id));
+      setDocuments((docs) =>
+        docs.map((d) => (d.folderId === f.id ? { ...d, folderId: null } : d)),
+      );
+      if (currentFolder === f.id) setCurrentFolder(null);
+      toast.success("Folder deleted", { description: f.name });
+    } catch (e) {
+      toast.error("Delete failed", {
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+    }
+  };
+
+  const openMoveDoc = (doc: KbDocument) => {
+    setMoveTarget(ROOT_VALUE);
+    setMoveDocModal(doc);
+  };
+
+  const submitMoveDoc = async () => {
+    if (!moveDocModal) return;
+    const folderId = moveTarget === ROOT_VALUE ? null : Number(moveTarget);
+    if (folderId === moveDocModal.folderId) {
+      setMoveDocModal(null);
+      return;
+    }
+    setMoving(true);
+    try {
+      const updated = await moveDocument(moveDocModal.id, folderId);
+      setDocuments((docs) =>
+        docs.map((d) =>
+          d.id === moveDocModal.id
+            ? {
+                ...mapDocument(updated),
+                requirements: d.requirements,
+                requirementsLoaded: d.requirementsLoaded,
+              }
+            : d,
+        ),
+      );
+      setMoveDocModal(null);
+      toast.success("Document moved");
+    } catch (e) {
+      toast.error("Move failed", {
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  const renameDoc = async (doc: KbDocument) => {
     const next = window.prompt("Rename document", doc.name);
     if (!next?.trim()) return;
-    setDocuments((docs) => docs.map((d) => (d.id === doc.id ? { ...d, name: next.trim() } : d)));
+    try {
+      const updated = await renameDocument(doc.id, next.trim());
+      setDocuments((docs) =>
+        docs.map((d) => (d.id === doc.id ? { ...d, name: updated.filename } : d)),
+      );
+      toast.success("Document renamed");
+    } catch (e) {
+      toast.error("Rename failed", {
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+    }
   };
 
-  const deleteDoc = (doc: KbDocument) => {
-    setDocuments((docs) => docs.filter((d) => d.id !== doc.id));
-    toast.success("Document deleted", { description: doc.name });
+  const deleteDoc = async (doc: KbDocument) => {
+    if (!window.confirm(`Delete “${doc.name}”? This cannot be undone.`)) return;
+    try {
+      await deleteDocument(doc.id);
+      setDocuments((docs) => docs.filter((d) => d.id !== doc.id));
+      toast.success("Document deleted", { description: doc.name });
+    } catch (e) {
+      toast.error("Delete failed", {
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+    }
   };
 
-  const isEmpty = folders.length === 0 && documents.length === 0;
+  const onToggleExpand = async (doc: KbDocument) => {
+    if (doc.requirementsLoaded || doc.status !== "Indexed") return;
+    try {
+      const full = await getDocument(doc.id);
+      setDocuments((docs) =>
+        docs.map((d) => (d.id === doc.id ? mapDocument(full, full.requirements, true) : d)),
+      );
+    } catch (e) {
+      toast.error("Could not load requirements", {
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+    }
+  };
+
+  const onUploaded = (_apiDoc: ApiDocument) => {
+    refresh();
+  };
+
+  const isEmpty = !loading && folders.length === 0 && documents.length === 0;
 
   return (
     <div className="light-surface">
@@ -251,20 +449,38 @@ function KnowledgeBase() {
           </p>
         </header>
 
-        <div className="flex flex-wrap justify-end gap-2 mb-4">
-          <Button
-            variant="outline"
-            onClick={() => setFolderModal(true)}
-            className="h-10 border-[#1E40AF] text-[#1E40AF] hover:bg-[#EEF2FF] hover:text-[#1E40AF] shadow-none rounded-md"
-          >
-            <FolderPlus className="h-4 w-4 mr-2" /> New Folder
-          </Button>
-          <Button
-            onClick={() => setUploadOpen(true)}
-            className="h-10 px-5 text-sm font-semibold text-white bg-[#1E40AF] hover:bg-[#1E3A8A] shadow-none rounded-md"
-          >
-            <Upload className="h-4 w-4 mr-2" /> Upload Document
-          </Button>
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
+              style={{ color: SUBTEXT }}
+            />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={
+                activeFolder
+                  ? `Search documents in ${activeFolder.name}…`
+                  : "Search folders and documents…"
+              }
+              className="h-10 pl-9 bg-white border-[#E5E7EB]"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2 ml-auto">
+            <Button
+              variant="outline"
+              onClick={() => setFolderModal(true)}
+              className="h-10 border-[#1E40AF] text-[#1E40AF] hover:bg-[#EEF2FF] hover:text-[#1E40AF] shadow-none rounded-md"
+            >
+              <FolderPlus className="h-4 w-4 mr-2" /> New Folder
+            </Button>
+            <Button
+              onClick={() => setUploadOpen(true)}
+              className="h-10 px-5 text-sm font-semibold text-white bg-[#1E40AF] hover:bg-[#1E3A8A] shadow-none rounded-md"
+            >
+              <Upload className="h-4 w-4 mr-2" /> Upload Document
+            </Button>
+          </div>
         </div>
 
         <nav className="mb-4 text-sm flex flex-wrap items-center gap-1" style={{ color: SUBTEXT }}>
@@ -285,7 +501,15 @@ function KnowledgeBase() {
         </nav>
 
         <section className="light-card p-4 sm:p-6">
-          {isEmpty ? (
+          {loading ? (
+            <div
+              className="py-20 flex flex-col items-center justify-center gap-2"
+              style={{ color: SUBTEXT }}
+            >
+              <Loader2 className="h-6 w-6 animate-spin" />
+              <span className="text-sm">Loading knowledge base…</span>
+            </div>
+          ) : isEmpty ? (
             <div
               className="py-20 border border-dashed rounded-md flex flex-col items-center justify-center text-center"
               style={{ borderColor: BORDER }}
@@ -299,7 +523,8 @@ function KnowledgeBase() {
             </div>
           ) : (
             <>
-              {!activeFolder && folders.length > 0 && (
+              {/* Folders — one per row (root only) */}
+              {!activeFolder && (
                 <div className="mb-6">
                   <div
                     className="text-[11px] uppercase tracking-[0.16em] mb-3 font-semibold"
@@ -307,33 +532,69 @@ function KnowledgeBase() {
                   >
                     Project folders
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                    {folders.map((f) => {
-                      const count = documents.filter((d) => d.folderId === f.id).length;
-                      return (
-                        <button
-                          key={f.id}
-                          onClick={() => setCurrentFolder(f.id)}
-                          className="text-left rounded-md border bg-white px-4 py-3 hover:bg-[#F8FAFC] transition-colors flex items-center gap-3"
-                          style={{ borderColor: BORDER }}
-                        >
-                          <Folder className="h-5 w-5 shrink-0" style={{ color: "#1E40AF" }} />
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium truncate" style={{ color: INK }}>
-                              {f.name}
-                            </div>
-                            <div className="text-[11px]" style={{ color: SUBTEXT }}>
-                              {count} document{count === 1 ? "" : "s"}
-                            </div>
-                          </div>
-                          <ChevronRight
-                            className="h-4 w-4 ml-auto shrink-0"
-                            style={{ color: SUBTEXT }}
-                          />
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {filteredFolders.length === 0 ? (
+                    <div
+                      className="py-8 border border-dashed rounded-md text-center text-sm"
+                      style={{ borderColor: BORDER, color: SUBTEXT }}
+                    >
+                      {q ? `No folders match “${search.trim()}”.` : "No folders yet."}
+                    </div>
+                  ) : (
+                    <ul className="rounded-md border" style={{ borderColor: BORDER }}>
+                      {filteredFolders.map((f) => {
+                        const count =
+                          f.documentCount ?? documents.filter((d) => d.folderId === f.id).length;
+                        return (
+                          <li
+                            key={f.id}
+                            className="border-b last:border-b-0 flex items-center gap-3 px-3 py-3"
+                            style={{ borderColor: BORDER }}
+                          >
+                            <button
+                              onClick={() => setCurrentFolder(f.id)}
+                              className="flex items-center gap-3 min-w-0 flex-1 text-left hover:opacity-80"
+                            >
+                              <Folder className="h-5 w-5 shrink-0" style={{ color: "#1E40AF" }} />
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium truncate" style={{ color: INK }}>
+                                  {f.name}
+                                </div>
+                                <div className="text-[11px]" style={{ color: SUBTEXT }}>
+                                  {count} document{count === 1 ? "" : "s"}
+                                </div>
+                              </div>
+                              <ChevronRight
+                                className="h-4 w-4 ml-auto shrink-0"
+                                style={{ color: SUBTEXT }}
+                              />
+                            </button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  aria-label="Folder actions"
+                                  className="p-1.5 rounded-md hover:bg-[#F1F5F9] shrink-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MoreHorizontal className="h-4 w-4" style={{ color: SUBTEXT }} />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-40 bg-white">
+                                <DropdownMenuItem onSelect={() => openRenameFolder(f)}>
+                                  Rename
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onSelect={() => deleteFolder(f)}
+                                  className="text-[#B91C1C] focus:text-[#B91C1C]"
+                                >
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
                 </div>
               )}
 
@@ -341,14 +602,14 @@ function KnowledgeBase() {
                 className="text-[11px] uppercase tracking-[0.16em] mb-3 font-semibold"
                 style={{ color: SUBTEXT }}
               >
-                {activeFolder ? `${activeFolder.name} · documents` : "Documents"}
+                {activeFolder ? `${activeFolder.name} · documents` : "Documents (root)"}
               </div>
               {visibleDocs.length === 0 ? (
                 <div
                   className="py-14 border border-dashed rounded-md text-center text-sm"
                   style={{ borderColor: BORDER, color: SUBTEXT }}
                 >
-                  No documents here yet.
+                  {q ? `No documents match “${search.trim()}”.` : "No documents here yet."}
                 </div>
               ) : (
                 <ul className="rounded-md border" style={{ borderColor: BORDER }}>
@@ -356,10 +617,10 @@ function KnowledgeBase() {
                     <DocumentRow
                       key={d.id}
                       doc={d}
-                      folders={folders}
-                      onMove={moveDoc}
+                      onMoveClick={openMoveDoc}
                       onRename={renameDoc}
                       onDelete={deleteDoc}
+                      onToggleExpand={onToggleExpand}
                     />
                   ))}
                 </ul>
@@ -369,6 +630,7 @@ function KnowledgeBase() {
         </section>
       </div>
 
+      {/* New folder */}
       <Dialog open={folderModal} onOpenChange={setFolderModal}>
         <DialogContent className="sm:max-w-sm bg-white">
           <DialogHeader>
@@ -381,6 +643,9 @@ function KnowledgeBase() {
             <Input
               value={folderName}
               onChange={(e) => setFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") createFolder();
+              }}
               placeholder="e.g. Billing Platform"
               className="mt-2 h-10 bg-white border-[#E5E7EB]"
             />
@@ -391,9 +656,138 @@ function KnowledgeBase() {
             </Button>
             <Button
               onClick={createFolder}
+              disabled={creatingFolder || !folderName.trim()}
               className="rounded-md bg-[#1E40AF] hover:bg-[#1E3A8A] text-white shadow-none"
             >
-              Create
+              {creatingFolder ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating…
+                </>
+              ) : (
+                "Create"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename folder */}
+      <Dialog
+        open={!!renameFolderModal}
+        onOpenChange={(o) => {
+          if (!o) setRenameFolderModal(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-sm bg-white">
+          <DialogHeader>
+            <DialogTitle style={{ color: INK }}>Rename Folder</DialogTitle>
+          </DialogHeader>
+          <div>
+            <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+              Folder name
+            </label>
+            <Input
+              value={renameFolderName}
+              onChange={(e) => setRenameFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitRenameFolder();
+              }}
+              className="mt-2 h-10 bg-white border-[#E5E7EB]"
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setRenameFolderModal(null)}
+              className="rounded-md"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={submitRenameFolder}
+              disabled={renamingFolder || !renameFolderName.trim()}
+              className="rounded-md bg-[#1E40AF] hover:bg-[#1E3A8A] text-white shadow-none"
+            >
+              {renamingFolder ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving…
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move document modal */}
+      <Dialog
+        open={!!moveDocModal}
+        onOpenChange={(o) => {
+          if (!o) setMoveDocModal(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle style={{ color: INK }}>Move Document</DialogTitle>
+          </DialogHeader>
+          {moveDocModal && (
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+                  Document
+                </label>
+                <div className="mt-1 text-sm font-mono" style={{ color: INK }}>
+                  {moveDocModal.name}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+                  Current location
+                </label>
+                <Input
+                  value={folderLocationLabel(moveDocModal.folderId)}
+                  readOnly
+                  disabled
+                  className="mt-2 h-10 bg-[#F8FAFC] border-[#E5E7EB] opacity-80"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+                  Move to
+                </label>
+                <Select value={moveTarget} onValueChange={setMoveTarget}>
+                  <SelectTrigger className="mt-2 h-10 bg-white border-[#E5E7EB]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ROOT_VALUE}>Knowledge Base (root)</SelectItem>
+                    {folders.map((f) => (
+                      <SelectItem key={f.id} value={String(f.id)}>
+                        {f.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setMoveDocModal(null)} className="rounded-md">
+              Cancel
+            </Button>
+            <Button
+              onClick={submitMoveDoc}
+              disabled={moving}
+              className="rounded-md bg-[#1E40AF] hover:bg-[#1E3A8A] text-white shadow-none"
+            >
+              {moving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Moving…
+                </>
+              ) : (
+                "Move"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -404,27 +798,7 @@ function KnowledgeBase() {
         onOpenChange={setUploadOpen}
         folders={folders}
         defaultFolderId={currentFolder}
-        onUploaded={({ fileName, folderId, requirements }) =>
-          setDocuments((docs) => [
-            ...docs,
-            {
-              id: `d-${Date.now()}`,
-              name: fileName,
-              folderId,
-              status: "Indexed",
-              requirementCount: requirements,
-              uploadedAt: new Date().toLocaleDateString("en-GB", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-              }),
-              requirements: Array.from({ length: Math.min(requirements, 4) }, (_, i) => ({
-                id: `FR-${40 + i}`,
-                title: "Extracted requirement",
-              })),
-            },
-          ])
-        }
+        onUploaded={onUploaded}
       />
     </div>
   );

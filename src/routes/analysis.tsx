@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Select,
   SelectContent,
@@ -22,10 +22,12 @@ import {
   ChevronsUpDown,
   Plus,
   X,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { UploadDocumentModal } from "@/components/UploadDocumentModal";
-import { INITIAL_DOCUMENTS, INITIAL_FOLDERS, docLabel } from "@/lib/knowledge-data";
+import { listFolders, searchDocuments, type ApiSearchDocument } from "@/lib/api";
+import { mapFolder, type KbFolder } from "@/lib/knowledge-data";
 
 export const Route = createFileRoute("/analysis")({
   head: () => ({
@@ -46,6 +48,7 @@ const INK = "#0F172A";
 const SUBTEXT = "#64748B";
 const BORDER = "#E5E7EB";
 
+// Still mock — backend has no connected-repos / impact-analysis APIs yet
 const REPOS = {
   "ecommerce-frontend": ["main", "develop", "release/v4.2", "feature/guest-checkout"],
   "payment-service": ["main", "hotfix/3ds", "release/v2.8", "feature/refund-sla"],
@@ -83,7 +86,6 @@ const MODES: { id: Mode; label: string }[] = [
   { id: "hybrid", label: "Hybrid" },
 ];
 
-
 function Gauge({ value }: { value: number }) {
   const clamped = Math.max(0, Math.min(100, value));
   const angle = (clamped / 100) * 180;
@@ -95,7 +97,6 @@ function Gauge({ value }: { value: number }) {
   const y = cy - r * Math.sin(rad);
   const color = clamped >= 75 ? "#EF4444" : clamped >= 50 ? "#F59E0B" : "#10B981";
   const label = clamped >= 75 ? "HIGH RISK" : clamped >= 50 ? "ELEVATED RISK" : "LOW RISK";
-  // Split arc into three flat colored segments (green 0-50%, amber 50-75%, red 75-100%)
   const arc = (from: number, to: number) => {
     const a1 = ((180 - (from / 100) * 180) * Math.PI) / 180;
     const a2 = ((180 - (to / 100) * 180) * Math.PI) / 180;
@@ -134,30 +135,59 @@ function Analysis() {
   const [showFiles, setShowFiles] = useState(true);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ score: number } | null>(null);
-  const [mode, setMode] = useState<Mode>("code");
-  const [docs, setDocs] = useState(INITIAL_DOCUMENTS);
-  const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
+  /** Empty until user picks a mode */
+  const [mode, setMode] = useState<Mode | "">("");
+
+  const [docOptions, setDocOptions] = useState<ApiSearchDocument[]>([]);
+  const [folders, setFolders] = useState<KbFolder[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [selectedDocs, setSelectedDocs] = useState<number[]>([]);
   const [docSearch, setDocSearch] = useState("");
   const [docPickerOpen, setDocPickerOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+
+  const loadDocs = useCallback(async () => {
+    setDocsLoading(true);
+    try {
+      const [docs, apiFolders] = await Promise.all([searchDocuments(), listFolders()]);
+      setDocOptions(docs);
+      setFolders(apiFolders.map(mapFolder));
+      setSelectedDocs((prev) => prev.filter((id) => docs.some((d) => d.id === id)));
+    } catch (e) {
+      toast.error("Could not load documents", {
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+    } finally {
+      setDocsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDocs();
+  }, [loadDocs]);
 
   const branches = useMemo(() => REPOS[repo], [repo]);
   const showCode = mode === "code" || mode === "hybrid";
   const showDocs = mode === "docs" || mode === "hybrid";
 
-  const docOptions = useMemo(
-    () => docs.map((d) => ({ id: d.id, label: docLabel(d, INITIAL_FOLDERS) })),
-    [docs],
-  );
   const filteredDocs = useMemo(
-    () => docOptions.filter((o) => o.label.toLowerCase().includes(docSearch.trim().toLowerCase())),
+    () =>
+      docOptions.filter((o) =>
+        o.display_name.toLowerCase().includes(docSearch.trim().toLowerCase()),
+      ),
     [docOptions, docSearch],
   );
-  const toggleDoc = (id: string) =>
+
+  const toggleDoc = (id: number) =>
     setSelectedDocs((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
-
   const run = () => {
+    if (!mode) {
+      toast.error("Select mode", {
+        description: "Choose Code-based, Documentation-based, or Hybrid before running.",
+      });
+      return;
+    }
     setRunning(true);
     setResult(null);
     setTimeout(() => {
@@ -188,38 +218,33 @@ function Analysis() {
 
         {/* INPUT ZONE */}
         <section className="light-card p-6 mb-6">
-          <div className="text-[11px] uppercase tracking-[0.16em] mb-4 font-semibold" style={{ color: SUBTEXT }}>
-            Input · configure analysis
-          </div>
-          <div className="mb-5">
-            <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
-              Analysis Mode
-            </label>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
             <div
-              className="mt-2 inline-flex flex-wrap gap-1 p-1 rounded-full border bg-[#F8FAFC]"
-              style={{ borderColor: BORDER }}
-              role="tablist"
+              className="text-[11px] uppercase tracking-[0.16em] font-semibold"
+              style={{ color: SUBTEXT }}
             >
-              {MODES.map((m) => {
-                const active = mode === m.id;
-                return (
-                  <button
-                    key={m.id}
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => setMode(m.id)}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-colors ${
-                      active ? "bg-[#1E40AF] text-white" : "text-[#475569] hover:bg-white"
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                );
-              })}
+              Input · configure analysis
+            </div>
+            <div className="w-full sm:w-56">
+              <Select
+                value={mode || undefined}
+                onValueChange={(v) => setMode(v as Mode)}
+              >
+                <SelectTrigger className="h-9 bg-white border-[#E5E7EB]">
+                  <SelectValue placeholder="Select mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  {MODES.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
-          {showDocs && (
+          {mode && showDocs && (
             <div className="mb-4">
               <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
                 Select Document(s)
@@ -231,14 +256,23 @@ function Analysis() {
                     style={{ borderColor: BORDER, color: selectedDocs.length ? INK : SUBTEXT }}
                   >
                     <span className="truncate">
-                      {selectedDocs.length
-                        ? `${selectedDocs.length} document${selectedDocs.length === 1 ? "" : "s"} selected`
-                        : "Search and select documents…"}
+                      {docsLoading
+                        ? "Loading documents…"
+                        : selectedDocs.length
+                          ? `${selectedDocs.length} document${selectedDocs.length === 1 ? "" : "s"} selected`
+                          : "Search and select documents…"}
                     </span>
-                    <ChevronsUpDown className="h-4 w-4 shrink-0" style={{ color: SUBTEXT }} />
+                    {docsLoading ? (
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" style={{ color: SUBTEXT }} />
+                    ) : (
+                      <ChevronsUpDown className="h-4 w-4 shrink-0" style={{ color: SUBTEXT }} />
+                    )}
                   </button>
                 </PopoverTrigger>
-                <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-0 bg-white">
+                <PopoverContent
+                  align="start"
+                  className="w-[--radix-popover-trigger-width] p-0 bg-white"
+                >
                   <div className="p-2 border-b" style={{ borderColor: BORDER }}>
                     <Input
                       value={docSearch}
@@ -250,7 +284,11 @@ function Analysis() {
                   <ul className="max-h-60 overflow-auto py-1">
                     {filteredDocs.length === 0 && (
                       <li className="px-3 py-3 text-xs" style={{ color: SUBTEXT }}>
-                        No documents match "{docSearch}".
+                        {docsLoading
+                          ? "Loading…"
+                          : docOptions.length === 0
+                            ? "No indexed documents yet. Upload one from Knowledge Base."
+                            : `No documents match "${docSearch}".`}
                       </li>
                     )}
                     {filteredDocs.map((o) => (
@@ -261,7 +299,7 @@ function Analysis() {
                             onCheckedChange={() => toggleDoc(o.id)}
                           />
                           <span className="text-[12px] font-mono truncate" style={{ color: INK }}>
-                            {o.label}
+                            {o.display_name}
                           </span>
                         </label>
                       </li>
@@ -280,8 +318,11 @@ function Analysis() {
                         key={id}
                         className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-mono bg-[#EEF2FF] text-[#1E40AF]"
                       >
-                        {opt.label}
-                        <button onClick={() => toggleDoc(id)} aria-label={`Remove ${opt.label}`}>
+                        {opt.display_name}
+                        <button
+                          onClick={() => toggleDoc(id)}
+                          aria-label={`Remove ${opt.display_name}`}
+                        >
                           <X className="h-3 w-3" />
                         </button>
                       </span>
@@ -299,10 +340,12 @@ function Analysis() {
             </div>
           )}
 
-          {showCode && (
+          {mode && showCode && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-medium" style={{ color: SUBTEXT }}>Select Repository</label>
+                <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+                  Select Repository
+                </label>
                 <Select
                   value={repo}
                   onValueChange={(v) => {
@@ -361,11 +404,21 @@ function Analysis() {
             </div>
           </div>
 
-          <div className="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t" style={{ borderColor: BORDER }}>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <Switch checked={showFiles} onCheckedChange={setShowFiles} />
-              <span className="text-sm" style={{ color: INK }}>Show technical file paths in results</span>
-            </label>
+          <div
+            className="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t"
+            style={{ borderColor: BORDER }}
+          >
+            {/* Toggle only for code / hybrid — not needed for documentation-based */}
+            {mode && showCode ? (
+              <label className="flex items-center gap-3 cursor-pointer">
+                <Switch checked={showFiles} onCheckedChange={setShowFiles} />
+                <span className="text-sm" style={{ color: INK }}>
+                  Show technical file paths in results
+                </span>
+              </label>
+            ) : (
+              <div />
+            )}
             <Button
               onClick={run}
               disabled={running || !prompt.trim()}
@@ -381,15 +434,22 @@ function Analysis() {
         <section className="light-card p-6">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.16em] font-semibold" style={{ color: SUBTEXT }}>
+              <div
+                className="text-[11px] uppercase tracking-[0.16em] font-semibold"
+                style={{ color: SUBTEXT }}
+              >
                 Output
               </div>
-              <div className="text-lg font-semibold mt-0.5" style={{ color: INK }}>Analysis Results</div>
+              <div className="text-lg font-semibold mt-0.5" style={{ color: INK }}>
+                Analysis Results
+              </div>
             </div>
             <Button
               variant="outline"
               disabled={!result}
-              onClick={() => toast.success("Impact report downloaded", { description: "impact-report.pdf" })}
+              onClick={() =>
+                toast.success("Impact report downloaded", { description: "impact-report.pdf" })
+              }
               className="border-[#1E40AF] text-[#1E40AF] hover:bg-[#EEF2FF] hover:text-[#1E40AF] shadow-none rounded-md"
             >
               <Download className="h-4 w-4 mr-2" />
@@ -405,35 +465,58 @@ function Analysis() {
               </div>
             </div>
           ) : !result ? (
-            <div className="py-20 border border-dashed rounded-md flex flex-col items-center justify-center text-center" style={{ borderColor: BORDER }}>
+            <div
+              className="py-20 border border-dashed rounded-md flex flex-col items-center justify-center text-center"
+              style={{ borderColor: BORDER }}
+            >
               <div className="h-11 w-11 rounded-full bg-[#F1F5F9] flex items-center justify-center mb-3">
                 <Zap className="h-5 w-5" style={{ color: SUBTEXT }} />
               </div>
-              <div className="text-sm font-medium" style={{ color: INK }}>Run an analysis to see impact results here</div>
+              <div className="text-sm font-medium" style={{ color: INK }}>
+                Run an analysis to see impact results here
+              </div>
               <div className="text-xs mt-1" style={{ color: SUBTEXT }}>
                 Configure inputs above and click Run Impact Analysis.
               </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-              {/* Gauge */}
-              <div className="rounded-md p-5 bg-white border flex flex-col items-center justify-center" style={{ borderColor: BORDER }}>
-                <div className="text-[10px] uppercase tracking-[0.2em] mb-2 font-semibold" style={{ color: SUBTEXT }}>
+              <div
+                className="rounded-md p-5 bg-white border flex flex-col items-center justify-center"
+                style={{ borderColor: BORDER }}
+              >
+                <div
+                  className="text-[10px] uppercase tracking-[0.2em] mb-2 font-semibold"
+                  style={{ color: SUBTEXT }}
+                >
                   Risk Score
                 </div>
                 <Gauge value={result.score} />
-                <div className="mt-3 grid grid-cols-3 gap-1.5 w-full text-center text-[9px] uppercase tracking-widest font-semibold" style={{ color: SUBTEXT }}>
-                  <div className="rounded-sm py-1" style={{ background: "#DCFCE7", color: "#166534" }}>Low</div>
-                  <div className="rounded-sm py-1" style={{ background: "#FEF3C7", color: "#92400E" }}>Elev</div>
-                  <div className="rounded-sm py-1" style={{ background: "#FEE2E2", color: "#991B1B" }}>High</div>
+                <div
+                  className="mt-3 grid grid-cols-3 gap-1.5 w-full text-center text-[9px] uppercase tracking-widest font-semibold"
+                  style={{ color: SUBTEXT }}
+                >
+                  <div className="rounded-sm py-1" style={{ background: "#DCFCE7", color: "#166534" }}>
+                    Low
+                  </div>
+                  <div className="rounded-sm py-1" style={{ background: "#FEF3C7", color: "#92400E" }}>
+                    Elev
+                  </div>
+                  <div className="rounded-sm py-1" style={{ background: "#FEE2E2", color: "#991B1B" }}>
+                    High
+                  </div>
                 </div>
               </div>
 
-              {/* Matched requirements */}
               {showDocs && (
-                <div className="rounded-md p-5 bg-white border lg:col-span-2" style={{ borderColor: BORDER }}>
+                <div
+                  className="rounded-md p-5 bg-white border lg:col-span-2"
+                  style={{ borderColor: BORDER }}
+                >
                   <div className="flex items-center justify-between mb-3">
-                    <div className="text-sm font-semibold" style={{ color: INK }}>Matched Requirements</div>
+                    <div className="text-sm font-semibold" style={{ color: INK }}>
+                      Matched Requirements
+                    </div>
                     <span className="text-[11px]" style={{ color: SUBTEXT }}>
                       {MATCHED_REQUIREMENTS.length} matches
                     </span>
@@ -448,7 +531,9 @@ function Analysis() {
                           style={{ borderColor: BORDER }}
                         >
                           <span className="text-sm min-w-0" style={{ color: INK }}>
-                            <span className="font-mono font-semibold" style={{ color: NAVY }}>{r.id}</span>
+                            <span className="font-mono font-semibold" style={{ color: NAVY }}>
+                              {r.id}
+                            </span>
                             {" — "}
                             {r.title}
                           </span>
@@ -469,26 +554,34 @@ function Analysis() {
                 </div>
               )}
 
-              {/* Features */}
               {showCode && (
-                <div className="rounded-md p-5 bg-white border lg:col-span-2" style={{ borderColor: BORDER }}>
+                <div
+                  className="rounded-md p-5 bg-white border lg:col-span-2"
+                  style={{ borderColor: BORDER }}
+                >
                   <div className="flex items-center justify-between mb-3">
-                    <div className="text-sm font-semibold" style={{ color: INK }}>Impacted Business Features</div>
+                    <div className="text-sm font-semibold" style={{ color: INK }}>
+                      Impacted Business Features
+                    </div>
                     <span className="text-[11px]" style={{ color: SUBTEXT }}>
                       {FEATURES.length} touched · {repo}
                     </span>
                   </div>
                   <ul className="space-y-1.5">
                     {FEATURES.map((f) => {
-                      const color = f.severity === "High" ? "#EF4444" : f.severity === "Medium" ? "#F59E0B" : "#10B981";
-                      const bg = f.severity === "High" ? "#FEE2E2" : f.severity === "Medium" ? "#FEF3C7" : "#DCFCE7";
+                      const color =
+                        f.severity === "High" ? "#EF4444" : f.severity === "Medium" ? "#F59E0B" : "#10B981";
+                      const bg =
+                        f.severity === "High" ? "#FEE2E2" : f.severity === "Medium" ? "#FEF3C7" : "#DCFCE7";
                       return (
                         <li
                           key={f.name}
                           className="flex items-center justify-between rounded-md px-3 py-2.5 border"
                           style={{ borderColor: BORDER }}
                         >
-                          <span className="text-sm" style={{ color: INK }}>{f.name}</span>
+                          <span className="text-sm" style={{ color: INK }}>
+                            {f.name}
+                          </span>
                           <span
                             className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded"
                             style={{ color, background: bg }}
@@ -502,12 +595,18 @@ function Analysis() {
                 </div>
               )}
 
-              {/* Affected files */}
               {showCode && showFiles && (
-                <div className="rounded-md p-5 bg-white border lg:col-span-3" style={{ borderColor: BORDER }}>
+                <div
+                  className="rounded-md p-5 bg-white border lg:col-span-3"
+                  style={{ borderColor: BORDER }}
+                >
                   <div className="flex items-center justify-between mb-3">
-                    <div className="text-sm font-semibold" style={{ color: INK }}>Affected Code Paths</div>
-                    <span className="text-[11px]" style={{ color: SUBTEXT }}>{FILES.length} files</span>
+                    <div className="text-sm font-semibold" style={{ color: INK }}>
+                      Affected Code Paths
+                    </div>
+                    <span className="text-[11px]" style={{ color: SUBTEXT }}>
+                      {FILES.length} files
+                    </span>
                   </div>
                   <ul className="grid grid-cols-1 md:grid-cols-2 gap-1 font-mono text-[12px]">
                     {FILES.map((f) => (
@@ -532,26 +631,12 @@ function Analysis() {
       <UploadDocumentModal
         open={uploadOpen}
         onOpenChange={setUploadOpen}
-        folders={INITIAL_FOLDERS}
+        folders={folders}
         defaultFolderId={null}
-        onUploaded={({ fileName, folderId, requirements }) =>
-          setDocs((d) => [
-            ...d,
-            {
-              id: `d-${Date.now()}`,
-              name: fileName,
-              folderId,
-              status: "Indexed",
-              requirementCount: requirements,
-              uploadedAt: new Date().toLocaleDateString("en-GB", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-              }),
-              requirements: [],
-            },
-          ])
-        }
+        onUploaded={() => {
+          loadDocs();
+          toast.success("Document uploaded — available in the picker once indexed");
+        }}
       />
     </div>
   );

@@ -16,6 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { UploadCloud, CheckCircle2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { uploadDocument, type ApiDocument } from "@/lib/api";
 import type { KbFolder } from "@/lib/knowledge-data";
 
 const ROOT = "__root__";
@@ -30,38 +32,62 @@ export function UploadDocumentModal({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   folders: KbFolder[];
-  defaultFolderId?: string | null;
-  onUploaded?: (args: { fileName: string; folderId: string | null; requirements: number }) => void;
+  defaultFolderId?: number | null;
+  onUploaded?: (doc: ApiDocument) => void;
 }) {
-  const [target, setTarget] = useState(defaultFolderId ?? ROOT);
+  const [target, setTarget] = useState(ROOT);
+  const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [phase, setPhase] = useState<"idle" | "processing" | "done">("idle");
   const [extracted, setExtracted] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
-      setTarget(defaultFolderId ?? ROOT);
+      setTarget(defaultFolderId != null ? String(defaultFolderId) : ROOT);
+      setFile(null);
       setFileName(null);
       setPhase("idle");
       setDragging(false);
+      setError(null);
+      setExtracted(0);
     }
   }, [open, defaultFolderId]);
 
-  const submit = () => {
+  const pickFile = (f: File | undefined | null) => {
+    if (!f) return;
+    const ext = f.name.slice(f.name.lastIndexOf(".")).toLowerCase();
+    if (![".docx", ".pdf", ".xlsx"].includes(ext)) {
+      setError("Unsupported file type. Allowed: .docx, .pdf, .xlsx");
+      return;
+    }
+    setError(null);
+    setFile(f);
+    setFileName(f.name);
+  };
+
+  const submit = async () => {
+    if (!file) {
+      setError("Please choose a file first.");
+      return;
+    }
     setPhase("processing");
-    setTimeout(() => {
-      const count = 5 + Math.floor(Math.random() * 12);
-      setExtracted(count);
+    setError(null);
+    try {
+      const folderId = target === ROOT ? null : Number(target);
+      const doc = await uploadDocument(file, folderId);
+      setExtracted(doc.requirement_count ?? 0);
       setPhase("done");
-      onUploaded?.({
-        fileName: fileName ?? "untitled.docx",
-        folderId: target === ROOT ? null : target,
-        requirements: count,
-      });
+      onUploaded?.(doc);
       setTimeout(() => onOpenChange(false), 1400);
-    }, 1200);
+    } catch (e) {
+      setPhase("idle");
+      const msg = e instanceof Error ? e.message : "Upload failed";
+      setError(msg);
+      toast.error("Upload failed", { description: msg });
+    }
   };
 
   return (
@@ -79,7 +105,8 @@ export function UploadDocumentModal({
             <CheckCircle2 className="h-10 w-10 text-[#10B981]" />
             <div className="mt-3 text-sm font-medium text-[#0F172A]">Upload complete</div>
             <div className="mt-1 text-xs text-[#64748B]">
-              {extracted} requirements extracted from {fileName ?? "your document"}.
+              {extracted} requirement{extracted === 1 ? "" : "s"} extracted from{" "}
+              {fileName ?? "your document"}.
             </div>
           </div>
         ) : (
@@ -93,8 +120,7 @@ export function UploadDocumentModal({
               onDrop={(e) => {
                 e.preventDefault();
                 setDragging(false);
-                const f = e.dataTransfer.files?.[0];
-                if (f) setFileName(f.name);
+                pickFile(e.dataTransfer.files?.[0]);
               }}
               className={`rounded-md border border-dashed p-8 text-center transition-colors ${
                 dragging ? "border-[#1E40AF] bg-[#EEF2FF]" : "border-[#E5E7EB] bg-[#F8FAFC]"
@@ -119,7 +145,7 @@ export function UploadDocumentModal({
                 type="file"
                 accept=".docx,.pdf,.xlsx"
                 className="hidden"
-                onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
+                onChange={(e) => pickFile(e.target.files?.[0])}
               />
             </div>
 
@@ -132,13 +158,19 @@ export function UploadDocumentModal({
                 <SelectContent>
                   <SelectItem value={ROOT}>Knowledge Base (root)</SelectItem>
                   {folders.map((f) => (
-                    <SelectItem key={f.id} value={f.id}>
+                    <SelectItem key={f.id} value={String(f.id)}>
                       {f.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+
+            {error && (
+              <div className="text-xs text-[#B91C1C] bg-[#FEF2F2] border border-[#FECACA] rounded-md px-3 py-2">
+                {error}
+              </div>
+            )}
           </div>
         )}
 
@@ -149,7 +181,7 @@ export function UploadDocumentModal({
             </Button>
             <Button
               onClick={submit}
-              disabled={phase === "processing"}
+              disabled={phase === "processing" || !file}
               className="rounded-md bg-[#1E40AF] hover:bg-[#1E3A8A] text-white shadow-none"
             >
               {phase === "processing" ? (
