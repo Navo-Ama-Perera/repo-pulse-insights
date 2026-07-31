@@ -69,6 +69,21 @@ const FILES = [
   "services/auth/src/middleware/jwt.ts",
 ];
 
+const MATCHED_REQUIREMENTS = [
+  { id: "FR-14", title: "Booking Engine", relevance: "Direct Match" as const },
+  { id: "FR-21", title: "Refund Initiation Window", relevance: "Direct Match" as const },
+  { id: "FR-11", title: "Guest Checkout Entry Point", relevance: "Related" as const },
+  { id: "NFR-03", title: "Checkout Latency Budget", relevance: "Related" as const },
+];
+
+type Mode = "code" | "docs" | "hybrid";
+const MODES: { id: Mode; label: string }[] = [
+  { id: "code", label: "Code-based" },
+  { id: "docs", label: "Documentation-based" },
+  { id: "hybrid", label: "Hybrid" },
+];
+
+
 function Gauge({ value }: { value: number }) {
   const clamped = Math.max(0, Math.min(100, value));
   const angle = (clamped / 100) * 180;
