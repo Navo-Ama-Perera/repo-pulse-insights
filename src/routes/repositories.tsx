@@ -163,7 +163,7 @@ function Repos() {
 
   return (
     <div className="light-surface">
-      <div className="p-6 md:p-10 pb-28 md:pb-10 max-w-[1400px]">
+      <div className="p-4 sm:p-6 md:p-10 pb-24 md:pb-10 max-w-[1400px]">
         <header className="mb-6 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
           <div>
             <div className="text-xs uppercase tracking-[0.18em]" style={{ color: SUBTEXT }}>
@@ -229,7 +229,7 @@ function Repos() {
                       className="mt-2 font-mono text-sm bg-white border-[#E5E7EB]"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs uppercase tracking-wider" style={{ color: SUBTEXT }}>
                         Default branch

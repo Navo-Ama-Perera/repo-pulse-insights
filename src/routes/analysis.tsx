@@ -10,8 +10,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Zap, Download, FileCode2, Sparkles, ChevronRight } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Zap,
+  Download,
+  FileCode2,
+  Sparkles,
+  ChevronRight,
+  ChevronsUpDown,
+  Plus,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
+import { UploadDocumentModal } from "@/components/UploadDocumentModal";
+import { INITIAL_DOCUMENTS, INITIAL_FOLDERS, docLabel } from "@/lib/knowledge-data";
 
 export const Route = createFileRoute("/analysis")({
   head: () => ({
@@ -54,6 +68,21 @@ const FILES = [
   "packages/shared/types/order.ts",
   "services/auth/src/middleware/jwt.ts",
 ];
+
+const MATCHED_REQUIREMENTS = [
+  { id: "FR-14", title: "Booking Engine", relevance: "Direct Match" as const },
+  { id: "FR-21", title: "Refund Initiation Window", relevance: "Direct Match" as const },
+  { id: "FR-11", title: "Guest Checkout Entry Point", relevance: "Related" as const },
+  { id: "NFR-03", title: "Checkout Latency Budget", relevance: "Related" as const },
+];
+
+type Mode = "code" | "docs" | "hybrid";
+const MODES: { id: Mode; label: string }[] = [
+  { id: "code", label: "Code-based" },
+  { id: "docs", label: "Documentation-based" },
+  { id: "hybrid", label: "Hybrid" },
+];
+
 
 function Gauge({ value }: { value: number }) {
   const clamped = Math.max(0, Math.min(100, value));
@@ -105,8 +134,28 @@ function Analysis() {
   const [showFiles, setShowFiles] = useState(true);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ score: number } | null>(null);
+  const [mode, setMode] = useState<Mode>("code");
+  const [docs, setDocs] = useState(INITIAL_DOCUMENTS);
+  const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
+  const [docSearch, setDocSearch] = useState("");
+  const [docPickerOpen, setDocPickerOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   const branches = useMemo(() => REPOS[repo], [repo]);
+  const showCode = mode === "code" || mode === "hybrid";
+  const showDocs = mode === "docs" || mode === "hybrid";
+
+  const docOptions = useMemo(
+    () => docs.map((d) => ({ id: d.id, label: docLabel(d, INITIAL_FOLDERS) })),
+    [docs],
+  );
+  const filteredDocs = useMemo(
+    () => docOptions.filter((o) => o.label.toLowerCase().includes(docSearch.trim().toLowerCase())),
+    [docOptions, docSearch],
+  );
+  const toggleDoc = (id: string) =>
+    setSelectedDocs((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
 
   const run = () => {
     setRunning(true);
@@ -123,7 +172,7 @@ function Analysis() {
 
   return (
     <div className="light-surface">
-      <div className="p-6 md:p-10 pb-28 md:pb-10 max-w-[1400px]">
+      <div className="p-4 sm:p-6 md:p-10 pb-24 md:pb-10 max-w-[1400px]">
         <header className="mb-6">
           <div className="text-xs uppercase tracking-[0.18em]" style={{ color: SUBTEXT }}>
             Workspace / Task
@@ -142,46 +191,156 @@ function Analysis() {
           <div className="text-[11px] uppercase tracking-[0.16em] mb-4 font-semibold" style={{ color: SUBTEXT }}>
             Input · configure analysis
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-medium" style={{ color: SUBTEXT }}>Select Repository</label>
-              <Select
-                value={repo}
-                onValueChange={(v) => {
-                  setRepo(v as keyof typeof REPOS);
-                  setBranch(REPOS[v as keyof typeof REPOS][0]);
-                }}
-              >
-                <SelectTrigger className="mt-2 h-10 bg-white border-[#E5E7EB]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.keys(REPOS).map((r) => (
-                    <SelectItem key={r} value={r} className="font-mono text-sm">
-                      {r}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
-                Select Branch <span className="text-[10px] opacity-70">(from {repo})</span>
-              </label>
-              <Select value={branch} onValueChange={setBranch}>
-                <SelectTrigger className="mt-2 h-10 bg-white border-[#E5E7EB]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((b) => (
-                    <SelectItem key={b} value={b} className="font-mono text-sm">
-                      {b}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="mb-5">
+            <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+              Analysis Mode
+            </label>
+            <div
+              className="mt-2 inline-flex flex-wrap gap-1 p-1 rounded-full border bg-[#F8FAFC]"
+              style={{ borderColor: BORDER }}
+              role="tablist"
+            >
+              {MODES.map((m) => {
+                const active = mode === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setMode(m.id)}
+                    className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-colors ${
+                      active ? "bg-[#1E40AF] text-white" : "text-[#475569] hover:bg-white"
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
+
+          {showDocs && (
+            <div className="mb-4">
+              <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+                Select Document(s)
+              </label>
+              <Popover open={docPickerOpen} onOpenChange={setDocPickerOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    className="mt-2 w-full h-10 px-3 rounded-md border bg-white flex items-center justify-between text-sm"
+                    style={{ borderColor: BORDER, color: selectedDocs.length ? INK : SUBTEXT }}
+                  >
+                    <span className="truncate">
+                      {selectedDocs.length
+                        ? `${selectedDocs.length} document${selectedDocs.length === 1 ? "" : "s"} selected`
+                        : "Search and select documents…"}
+                    </span>
+                    <ChevronsUpDown className="h-4 w-4 shrink-0" style={{ color: SUBTEXT }} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-0 bg-white">
+                  <div className="p-2 border-b" style={{ borderColor: BORDER }}>
+                    <Input
+                      value={docSearch}
+                      onChange={(e) => setDocSearch(e.target.value)}
+                      placeholder="Search folder or file name…"
+                      className="h-9 bg-white border-[#E5E7EB]"
+                    />
+                  </div>
+                  <ul className="max-h-60 overflow-auto py-1">
+                    {filteredDocs.length === 0 && (
+                      <li className="px-3 py-3 text-xs" style={{ color: SUBTEXT }}>
+                        No documents match "{docSearch}".
+                      </li>
+                    )}
+                    {filteredDocs.map((o) => (
+                      <li key={o.id}>
+                        <label className="flex items-center gap-2 px-3 py-2 hover:bg-[#F8FAFC] cursor-pointer">
+                          <Checkbox
+                            checked={selectedDocs.includes(o.id)}
+                            onCheckedChange={() => toggleDoc(o.id)}
+                          />
+                          <span className="text-[12px] font-mono truncate" style={{ color: INK }}>
+                            {o.label}
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </PopoverContent>
+              </Popover>
+
+              {selectedDocs.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {selectedDocs.map((id) => {
+                    const opt = docOptions.find((o) => o.id === id);
+                    if (!opt) return null;
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-mono bg-[#EEF2FF] text-[#1E40AF]"
+                      >
+                        {opt.label}
+                        <button onClick={() => toggleDoc(id)} aria-label={`Remove ${opt.label}`}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              <button
+                onClick={() => setUploadOpen(true)}
+                className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[#1E40AF] hover:underline"
+              >
+                <Plus className="h-3 w-3" /> Upload new document
+              </button>
+            </div>
+          )}
+
+          {showCode && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium" style={{ color: SUBTEXT }}>Select Repository</label>
+                <Select
+                  value={repo}
+                  onValueChange={(v) => {
+                    setRepo(v as keyof typeof REPOS);
+                    setBranch(REPOS[v as keyof typeof REPOS][0]);
+                  }}
+                >
+                  <SelectTrigger className="mt-2 h-10 bg-white border-[#E5E7EB]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(REPOS).map((r) => (
+                      <SelectItem key={r} value={r} className="font-mono text-sm">
+                        {r}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+                  Select Branch <span className="text-[10px] opacity-70">(from {repo})</span>
+                </label>
+                <Select value={branch} onValueChange={setBranch}>
+                  <SelectTrigger className="mt-2 h-10 bg-white border-[#E5E7EB]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b} value={b} className="font-mono text-sm">
+                        {b}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
 
           <div className="mt-5">
             <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
@@ -242,7 +401,7 @@ function Analysis() {
             <div className="py-20 flex flex-col items-center justify-center gap-4">
               <div className="h-10 w-10 rounded-full border-2 border-[#1E40AF] border-t-transparent animate-spin" />
               <div className="text-xs font-mono" style={{ color: SUBTEXT }}>
-                Traversing {repo}@{branch}…
+                {showCode ? `Traversing ${repo}@${branch}…` : "Parsing selected documents…"}
               </div>
             </div>
           ) : !result ? (
@@ -270,39 +429,81 @@ function Analysis() {
                 </div>
               </div>
 
-              {/* Features */}
-              <div className="rounded-md p-5 bg-white border lg:col-span-2" style={{ borderColor: BORDER }}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm font-semibold" style={{ color: INK }}>Impacted Business Features</div>
-                  <span className="text-[11px]" style={{ color: SUBTEXT }}>
-                    {FEATURES.length} touched · {repo}
-                  </span>
-                </div>
-                <ul className="space-y-1.5">
-                  {FEATURES.map((f) => {
-                    const color = f.severity === "High" ? "#EF4444" : f.severity === "Medium" ? "#F59E0B" : "#10B981";
-                    const bg = f.severity === "High" ? "#FEE2E2" : f.severity === "Medium" ? "#FEF3C7" : "#DCFCE7";
-                    return (
-                      <li
-                        key={f.name}
-                        className="flex items-center justify-between rounded-md px-3 py-2.5 border"
-                        style={{ borderColor: BORDER }}
-                      >
-                        <span className="text-sm" style={{ color: INK }}>{f.name}</span>
-                        <span
-                          className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded"
-                          style={{ color, background: bg }}
+              {/* Matched requirements */}
+              {showDocs && (
+                <div className="rounded-md p-5 bg-white border lg:col-span-2" style={{ borderColor: BORDER }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-sm font-semibold" style={{ color: INK }}>Matched Requirements</div>
+                    <span className="text-[11px]" style={{ color: SUBTEXT }}>
+                      {MATCHED_REQUIREMENTS.length} matches
+                    </span>
+                  </div>
+                  <ul className="space-y-1.5">
+                    {MATCHED_REQUIREMENTS.map((r) => {
+                      const direct = r.relevance === "Direct Match";
+                      return (
+                        <li
+                          key={r.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-md px-3 py-2.5 border"
+                          style={{ borderColor: BORDER }}
                         >
-                          {f.severity}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
+                          <span className="text-sm min-w-0" style={{ color: INK }}>
+                            <span className="font-mono font-semibold" style={{ color: NAVY }}>{r.id}</span>
+                            {" — "}
+                            {r.title}
+                          </span>
+                          <span
+                            className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded"
+                            style={
+                              direct
+                                ? { color: "#1E40AF", background: "#EEF2FF" }
+                                : { color: "#475569", background: "#F1F5F9" }
+                            }
+                          >
+                            {r.relevance}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              {/* Features */}
+              {showCode && (
+                <div className="rounded-md p-5 bg-white border lg:col-span-2" style={{ borderColor: BORDER }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-sm font-semibold" style={{ color: INK }}>Impacted Business Features</div>
+                    <span className="text-[11px]" style={{ color: SUBTEXT }}>
+                      {FEATURES.length} touched · {repo}
+                    </span>
+                  </div>
+                  <ul className="space-y-1.5">
+                    {FEATURES.map((f) => {
+                      const color = f.severity === "High" ? "#EF4444" : f.severity === "Medium" ? "#F59E0B" : "#10B981";
+                      const bg = f.severity === "High" ? "#FEE2E2" : f.severity === "Medium" ? "#FEF3C7" : "#DCFCE7";
+                      return (
+                        <li
+                          key={f.name}
+                          className="flex items-center justify-between rounded-md px-3 py-2.5 border"
+                          style={{ borderColor: BORDER }}
+                        >
+                          <span className="text-sm" style={{ color: INK }}>{f.name}</span>
+                          <span
+                            className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded"
+                            style={{ color, background: bg }}
+                          >
+                            {f.severity}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
 
               {/* Affected files */}
-              {showFiles && (
+              {showCode && showFiles && (
                 <div className="rounded-md p-5 bg-white border lg:col-span-3" style={{ borderColor: BORDER }}>
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-sm font-semibold" style={{ color: INK }}>Affected Code Paths</div>
@@ -327,6 +528,31 @@ function Analysis() {
           )}
         </section>
       </div>
+
+      <UploadDocumentModal
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        folders={INITIAL_FOLDERS}
+        defaultFolderId={null}
+        onUploaded={({ fileName, folderId, requirements }) =>
+          setDocs((d) => [
+            ...d,
+            {
+              id: `d-${Date.now()}`,
+              name: fileName,
+              folderId,
+              status: "Indexed",
+              requirementCount: requirements,
+              uploadedAt: new Date().toLocaleDateString("en-GB", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              }),
+              requirements: [],
+            },
+          ])
+        }
+      />
     </div>
   );
 }
