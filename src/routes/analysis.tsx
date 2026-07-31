@@ -10,8 +10,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Zap, Download, FileCode2, Sparkles, ChevronRight } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Zap,
+  Download,
+  FileCode2,
+  Sparkles,
+  ChevronRight,
+  ChevronsUpDown,
+  Plus,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
+import { UploadDocumentModal } from "@/components/UploadDocumentModal";
+import { INITIAL_DOCUMENTS, INITIAL_FOLDERS, docLabel } from "@/lib/knowledge-data";
 
 export const Route = createFileRoute("/analysis")({
   head: () => ({
