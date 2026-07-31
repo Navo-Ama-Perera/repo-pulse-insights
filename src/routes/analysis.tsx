@@ -134,8 +134,28 @@ function Analysis() {
   const [showFiles, setShowFiles] = useState(true);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ score: number } | null>(null);
+  const [mode, setMode] = useState<Mode>("code");
+  const [docs, setDocs] = useState(INITIAL_DOCUMENTS);
+  const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
+  const [docSearch, setDocSearch] = useState("");
+  const [docPickerOpen, setDocPickerOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   const branches = useMemo(() => REPOS[repo], [repo]);
+  const showCode = mode === "code" || mode === "hybrid";
+  const showDocs = mode === "docs" || mode === "hybrid";
+
+  const docOptions = useMemo(
+    () => docs.map((d) => ({ id: d.id, label: docLabel(d, INITIAL_FOLDERS) })),
+    [docs],
+  );
+  const filteredDocs = useMemo(
+    () => docOptions.filter((o) => o.label.toLowerCase().includes(docSearch.trim().toLowerCase())),
+    [docOptions, docSearch],
+  );
+  const toggleDoc = (id: string) =>
+    setSelectedDocs((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
 
   const run = () => {
     setRunning(true);
