@@ -401,7 +401,7 @@ function Analysis() {
             <div className="py-20 flex flex-col items-center justify-center gap-4">
               <div className="h-10 w-10 rounded-full border-2 border-[#1E40AF] border-t-transparent animate-spin" />
               <div className="text-xs font-mono" style={{ color: SUBTEXT }}>
-                Traversing {repo}@{branch}…
+                {showCode ? `Traversing ${repo}@${branch}…` : "Parsing selected documents…"}
               </div>
             </div>
           ) : !result ? (
