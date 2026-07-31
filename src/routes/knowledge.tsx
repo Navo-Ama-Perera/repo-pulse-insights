@@ -23,6 +23,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Folder,
   FolderPlus,
   Upload,
@@ -239,6 +249,11 @@ function KnowledgeBase() {
 
   const [uploadOpen, setUploadOpen] = useState(false);
 
+  // Delete confirmations
+  const [docToDelete, setDocToDelete] = useState<KbDocument | null>(null);
+  const [folderToDelete, setFolderToDelete] = useState<KbFolder | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
@@ -326,25 +341,24 @@ function KnowledgeBase() {
     }
   };
 
-  const deleteFolder = async (f: KbFolder) => {
-    if (
-      !window.confirm(
-        `Delete folder “${f.name}”? Documents inside will move to Knowledge Base (root).`,
-      )
-    )
-      return;
+  const confirmDeleteFolder = async () => {
+    if (!folderToDelete) return;
+    setDeleting(true);
     try {
-      await apiDeleteFolder(f.id);
-      setFolders((prev) => prev.filter((x) => x.id !== f.id));
+      await apiDeleteFolder(folderToDelete.id);
+      setFolders((prev) => prev.filter((x) => x.id !== folderToDelete.id));
       setDocuments((docs) =>
-        docs.map((d) => (d.folderId === f.id ? { ...d, folderId: null } : d)),
+        docs.map((d) => (d.folderId === folderToDelete.id ? { ...d, folderId: null } : d)),
       );
-      if (currentFolder === f.id) setCurrentFolder(null);
-      toast.success("Folder deleted", { description: f.name });
+      if (currentFolder === folderToDelete.id) setCurrentFolder(null);
+      toast.success("Folder deleted", { description: folderToDelete.name });
+      setFolderToDelete(null);
     } catch (e) {
       toast.error("Delete failed", {
         description: e instanceof Error ? e.message : "Unknown error",
       });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -401,16 +415,20 @@ function KnowledgeBase() {
     }
   };
 
-  const deleteDoc = async (doc: KbDocument) => {
-    if (!window.confirm(`Delete “${doc.name}”? This cannot be undone.`)) return;
+  const confirmDeleteDoc = async () => {
+    if (!docToDelete) return;
+    setDeleting(true);
     try {
-      await deleteDocument(doc.id);
-      setDocuments((docs) => docs.filter((d) => d.id !== doc.id));
-      toast.success("Document deleted", { description: doc.name });
+      await deleteDocument(docToDelete.id);
+      setDocuments((docs) => docs.filter((d) => d.id !== docToDelete.id));
+      toast.success("Document deleted", { description: docToDelete.name });
+      setDocToDelete(null);
     } catch (e) {
       toast.error("Delete failed", {
         description: e instanceof Error ? e.message : "Unknown error",
       });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -542,8 +560,8 @@ function KnowledgeBase() {
                   ) : (
                     <ul className="rounded-md border" style={{ borderColor: BORDER }}>
                       {filteredFolders.map((f) => {
-                        const count =
-                          f.documentCount ?? documents.filter((d) => d.folderId === f.id).length;
+                        // Always derive from live documents so move/delete stay in sync
+                        const count = documents.filter((d) => d.folderId === f.id).length;
                         return (
                           <li
                             key={f.id}
@@ -583,7 +601,7 @@ function KnowledgeBase() {
                                   Rename
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  onSelect={() => deleteFolder(f)}
+                                  onSelect={() => setFolderToDelete(f)}
                                   className="text-[#B91C1C] focus:text-[#B91C1C]"
                                 >
                                   Delete
@@ -619,7 +637,7 @@ function KnowledgeBase() {
                       doc={d}
                       onMoveClick={openMoveDoc}
                       onRename={renameDoc}
-                      onDelete={deleteDoc}
+                      onDelete={(doc) => setDocToDelete(doc)}
                       onToggleExpand={onToggleExpand}
                     />
                   ))}
@@ -720,58 +738,40 @@ function KnowledgeBase() {
         </DialogContent>
       </Dialog>
 
-      {/* Move document modal */}
+      {/* Move document */}
       <Dialog
         open={!!moveDocModal}
         onOpenChange={(o) => {
           if (!o) setMoveDocModal(null);
         }}
       >
-        <DialogContent className="sm:max-w-md bg-white">
+        <DialogContent className="sm:max-w-sm bg-white">
           <DialogHeader>
-            <DialogTitle style={{ color: INK }}>Move Document</DialogTitle>
+            <DialogTitle style={{ color: INK }}>Move document</DialogTitle>
           </DialogHeader>
-          {moveDocModal && (
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
-                  Document
-                </label>
-                <div className="mt-1 text-sm font-mono" style={{ color: INK }}>
-                  {moveDocModal.name}
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
-                  Current location
-                </label>
-                <Input
-                  value={folderLocationLabel(moveDocModal.folderId)}
-                  readOnly
-                  disabled
-                  className="mt-2 h-10 bg-[#F8FAFC] border-[#E5E7EB] opacity-80"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
-                  Move to
-                </label>
-                <Select value={moveTarget} onValueChange={setMoveTarget}>
-                  <SelectTrigger className="mt-2 h-10 bg-white border-[#E5E7EB]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ROOT_VALUE}>Knowledge Base (root)</SelectItem>
-                    {folders.map((f) => (
-                      <SelectItem key={f.id} value={String(f.id)}>
-                        {f.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
+          <div>
+            <p className="text-sm mb-3" style={{ color: SUBTEXT }}>
+              Move <strong style={{ color: INK }}>{moveDocModal?.name}</strong>
+            </p>
+            <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+              Destination
+            </label>
+            <Select value={moveTarget} onValueChange={setMoveTarget}>
+              <SelectTrigger className="mt-2 h-10 bg-white border-[#E5E7EB]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ROOT_VALUE}>Knowledge Base (root)</SelectItem>
+                {folders
+                  .filter((f) => f.id !== moveDocModal?.folderId)
+                  .map((f) => (
+                    <SelectItem key={f.id} value={String(f.id)}>
+                      {f.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
           <DialogFooter className="gap-2 sm:gap-2">
             <Button variant="outline" onClick={() => setMoveDocModal(null)} className="rounded-md">
               Cancel
@@ -792,6 +792,84 @@ function KnowledgeBase() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete document confirmation */}
+      <AlertDialog
+        open={!!docToDelete}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDocToDelete(null);
+        }}
+      >
+        <AlertDialogContent className="bg-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle style={{ color: INK }}>Delete document?</AlertDialogTitle>
+            <AlertDialogDescription style={{ color: SUBTEXT }}>
+              This will permanently remove <strong>{docToDelete?.name}</strong> and all of its
+              extracted requirements. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting} className="rounded-md">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                confirmDeleteDoc();
+              }}
+              disabled={deleting}
+              className="rounded-md bg-[#B91C1C] hover:bg-[#991B1B] text-white"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting…
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete folder confirmation */}
+      <AlertDialog
+        open={!!folderToDelete}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setFolderToDelete(null);
+        }}
+      >
+        <AlertDialogContent className="bg-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle style={{ color: INK }}>Delete folder?</AlertDialogTitle>
+            <AlertDialogDescription style={{ color: SUBTEXT }}>
+              Delete <strong>{folderToDelete?.name}</strong>? Documents inside will move to
+              Knowledge Base (root). This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting} className="rounded-md">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                confirmDeleteFolder();
+              }}
+              disabled={deleting}
+              className="rounded-md bg-[#B91C1C] hover:bg-[#991B1B] text-white"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting…
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <UploadDocumentModal
         open={uploadOpen}

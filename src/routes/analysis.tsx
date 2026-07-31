@@ -129,9 +129,8 @@ function Gauge({ value }: { value: number }) {
 function Analysis() {
   const [repo, setRepo] = useState<keyof typeof REPOS>("payment-service");
   const [branch, setBranch] = useState<string>("main");
-  const [prompt, setPrompt] = useState(
-    "Introduce a mandatory 3DS challenge for EU-issued cards over €100, with fallback to OTP if the issuer bank does not respond within 4s.",
-  );
+ const [prompt, setPrompt] = useState("");
+const [errors, setErrors] = useState<{ mode?: string; prompt?: string }>({});
   const [showFiles, setShowFiles] = useState(true);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ score: number } | null>(null);
@@ -181,24 +180,33 @@ function Analysis() {
   const toggleDoc = (id: number) =>
     setSelectedDocs((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
-  const run = () => {
-    if (!mode) {
-      toast.error("Select mode", {
-        description: "Choose Code-based, Documentation-based, or Hybrid before running.",
-      });
-      return;
-    }
-    setRunning(true);
-    setResult(null);
-    setTimeout(() => {
-      const score = 40 + Math.floor(Math.random() * 55);
-      setResult({ score });
-      setRunning(false);
-      toast.success("Impact analysis complete", {
-        description: `Risk score ${score} · ${FEATURES.length} features touched`,
-      });
-    }, 1000);
-  };
+ const run = () => {
+  const nextErrors: { mode?: string; prompt?: string } = {};
+
+  if (!mode) {
+    nextErrors.mode = "Please select an analysis mode.";
+  }
+  if (!prompt.trim()) {
+    nextErrors.prompt = "Describe the proposed business change to continue.";
+  }
+
+  if (Object.keys(nextErrors).length > 0) {
+    setErrors(nextErrors);
+    return;
+  }
+
+  setErrors({});
+  setRunning(true);
+  setResult(null);
+  setTimeout(() => {
+    const score = 40 + Math.floor(Math.random() * 55);
+    setResult({ score });
+    setRunning(false);
+    toast.success("Impact analysis complete", {
+      description: `Risk score ${score} · ${FEATURES.length} features touched`,
+    });
+  }, 1000);
+};
 
   return (
     <div className="light-surface">
@@ -225,23 +233,35 @@ function Analysis() {
             >
               Input · configure analysis
             </div>
-            <div className="w-full sm:w-56">
-              <Select
-                value={mode || undefined}
-                onValueChange={(v) => setMode(v as Mode)}
-              >
-                <SelectTrigger className="h-9 bg-white border-[#E5E7EB]">
-                  <SelectValue placeholder="Select mode" />
-                </SelectTrigger>
-                <SelectContent>
-                  {MODES.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+           <div className="w-full sm:w-56">
+  <Select
+    value={mode || undefined}
+    onValueChange={(v) => {
+      setMode(v as Mode);
+      setErrors((e) => ({ ...e, mode: undefined }));
+    }}
+  >
+    <SelectTrigger
+      className={`h-9 bg-white ${
+        errors.mode ? "border-[#EF4444] ring-1 ring-[#EF4444]/50" : "border-[#E5E7EB]"
+      }`}
+    >
+      <SelectValue placeholder="Select mode" />
+    </SelectTrigger>
+    <SelectContent>
+      {MODES.map((m) => (
+        <SelectItem key={m.id} value={m.id}>
+          {m.label}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+  {errors.mode && (
+    <div className="mt-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium bg-[#FEE2E2] text-[#991B1B]">
+      {errors.mode}
+    </div>
+  )}
+</div>
           </div>
 
           {mode && showDocs && (
@@ -386,23 +406,37 @@ function Analysis() {
           )}
 
           <div className="mt-5">
-            <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
-              Proposed Business Requirement Change
-            </label>
-            <Textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              rows={6}
-              placeholder="e.g. Introduce a mandatory 3DS challenge for EU-issued cards over €100…"
-              className="mt-2 min-h-[140px] font-mono text-sm resize-none bg-white border-[#E5E7EB]"
-            />
-            <div className="mt-1 flex justify-between text-[11px]" style={{ color: SUBTEXT }}>
-              <span className="inline-flex items-center gap-1">
-                <Sparkles className="h-3 w-3" /> Tip: reference specific business rules or SLAs.
-              </span>
-              <span className="font-mono">{prompt.length} chars</span>
-            </div>
-          </div>
+  <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+    Proposed Business Requirement Change{" "}
+    <span className="text-[#EF4444]">*</span>
+  </label>
+  <Textarea
+    value={prompt}
+    onChange={(e) => {
+      setPrompt(e.target.value);
+      if (e.target.value.trim()) {
+        setErrors((err) => ({ ...err, prompt: undefined }));
+      }
+    }}
+    rows={6}
+    placeholder="e.g. Introduce a mandatory 3DS challenge for EU-issued cards over €100…"
+    className={`mt-2 min-h-[140px] font-mono text-sm resize-none bg-white ${
+      errors.prompt ? "border-[#EF4444] ring-1 ring-[#EF4444]/50" : "border-[#E5E7EB]"
+    }`}
+  />
+  {errors.prompt ? (
+    <div className="mt-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium bg-[#FEE2E2] text-[#991B1B]">
+      {errors.prompt}
+    </div>
+  ) : (
+    <div className="mt-1 flex justify-between text-[11px]" style={{ color: SUBTEXT }}>
+      <span className="inline-flex items-center gap-1">
+        <Sparkles className="h-3 w-3" /> Tip: reference specific business rules or SLAs.
+      </span>
+      <span className="font-mono">{prompt.length} chars</span>
+    </div>
+  )}
+</div>
 
           <div
             className="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t"
@@ -421,7 +455,7 @@ function Analysis() {
             )}
             <Button
               onClick={run}
-              disabled={running || !prompt.trim()}
+              disabled={running}
               className="h-10 px-5 text-sm font-semibold text-white bg-[#1E40AF] hover:bg-[#1E3A8A] disabled:opacity-50 shadow-none rounded-md"
             >
               <Zap className="h-4 w-4 mr-2" />
