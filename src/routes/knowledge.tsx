@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -45,6 +46,9 @@ import {
   Loader2,
   Inbox,
   Search,
+  Pencil,
+  Trash2,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { UploadDocumentModal } from "@/components/UploadDocumentModal";
@@ -58,13 +62,18 @@ import {
   renameDocument,
   deleteDocument,
   getDocument,
+  addRequirement,
+  updateRequirement,
+  deleteRequirement,
   type ApiDocument,
 } from "@/lib/api";
 import {
   mapFolder,
   mapDocument,
+  mapRequirement,
   type KbDocument,
   type KbFolder,
+  type Requirement,
 } from "@/lib/knowledge-data";
 
 export const Route = createFileRoute("/knowledge")({
@@ -127,12 +136,18 @@ function DocumentRow({
   onRename,
   onDelete,
   onToggleExpand,
+  onEditRequirement,
+  onDeleteRequirement,
+  onAddRequirement,
 }: {
   doc: KbDocument;
   onMoveClick: (doc: KbDocument) => void;
   onRename: (doc: KbDocument) => void;
   onDelete: (doc: KbDocument) => void;
   onToggleExpand: (doc: KbDocument) => void;
+  onEditRequirement: (doc: KbDocument, req: Requirement) => void;
+  onDeleteRequirement: (doc: KbDocument, req: Requirement) => void;
+  onAddRequirement: (doc: KbDocument) => void;
 }) {
   const [open, setOpen] = useState(false);
   const Icon = docIcon(doc.name);
@@ -196,31 +211,73 @@ function DocumentRow({
       </div>
 
       {open && (
-        <div className="px-3 pb-3 pl-10">
+        <div className="px-3 pb-3 pl-10 space-y-2">
           {!doc.requirementsLoaded && doc.status === "Indexed" ? (
             <div className="text-xs flex items-center gap-2" style={{ color: SUBTEXT }}>
               <Loader2 className="h-3 w-3 animate-spin" /> Loading requirements…
             </div>
-          ) : doc.requirements.length === 0 ? (
-            <div className="text-xs" style={{ color: SUBTEXT }}>
-              No requirements extracted yet.
-            </div>
           ) : (
-            <ul className="rounded-md border divide-y" style={{ borderColor: BORDER }}>
-              {doc.requirements.map((r) => (
-                <li
-                  key={r.id}
-                  className="px-3 py-2 text-[12px] flex flex-wrap gap-x-2"
-                  style={{ borderColor: BORDER, color: INK }}
-                >
-                  <span className="font-mono font-semibold" style={{ color: "#1E40AF" }}>
-                    {r.reqCode}
-                  </span>
-                  <span style={{ color: SUBTEXT }}>—</span>
-                  <span>{r.title}</span>
-                </li>
-              ))}
-            </ul>
+            <>
+              {doc.requirements.length === 0 ? (
+                <div className="text-xs" style={{ color: SUBTEXT }}>
+                  No requirements yet. Add one below.
+                </div>
+              ) : (
+                <ul className="rounded-md border divide-y" style={{ borderColor: BORDER }}>
+                  {doc.requirements.map((r) => (
+                    <li key={r.id} className="px-3 py-2.5" style={{ borderColor: BORDER }}>
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[12px] flex flex-wrap gap-x-2" style={{ color: INK }}>
+                            <span className="font-mono font-semibold" style={{ color: "#1E40AF" }}>
+                              {r.reqCode}
+                            </span>
+                            <span style={{ color: SUBTEXT }}>—</span>
+                            <span className="font-medium">{r.title}</span>
+                          </div>
+                          {r.description && (
+                            <p
+                              className="mt-1 text-[11px] leading-relaxed"
+                              style={{ color: SUBTEXT }}
+                            >
+                              {r.description}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 gap-0.5">
+                          <button
+                            type="button"
+                            aria-label="Edit requirement"
+                            onClick={() => onEditRequirement(doc, r)}
+                            className="p-1.5 rounded hover:bg-[#F1F5F9]"
+                          >
+                            <Pencil className="h-3.5 w-3.5" style={{ color: SUBTEXT }} />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Delete requirement"
+                            onClick={() => onDeleteRequirement(doc, r)}
+                            className="p-1.5 rounded hover:bg-[#FEF2F2]"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-[#B91C1C]" />
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onAddRequirement(doc)}
+                className="h-8 text-xs border-[#1E40AF] text-[#1E40AF] hover:bg-[#EEF2FF] shadow-none rounded-md"
+              >
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
+                Add requirement
+              </Button>
+            </>
           )}
         </div>
       )}
@@ -249,10 +306,24 @@ function KnowledgeBase() {
 
   const [uploadOpen, setUploadOpen] = useState(false);
 
-  // Delete confirmations
   const [docToDelete, setDocToDelete] = useState<KbDocument | null>(null);
   const [folderToDelete, setFolderToDelete] = useState<KbFolder | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Requirement add / edit / delete
+  const [reqModal, setReqModal] = useState<{
+    mode: "add" | "edit";
+    doc: KbDocument;
+    req?: Requirement;
+  } | null>(null);
+  const [reqCode, setReqCode] = useState("");
+  const [reqTitle, setReqTitle] = useState("");
+  const [reqDescription, setReqDescription] = useState("");
+  const [reqSaving, setReqSaving] = useState(false);
+  const [reqToDelete, setReqToDelete] = useState<{
+    doc: KbDocument;
+    req: Requirement;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -273,7 +344,6 @@ function KnowledgeBase() {
     refresh();
   }, [refresh]);
 
-  // Reset search when navigating between root / folder
   useEffect(() => {
     setSearch("");
   }, [currentFolder]);
@@ -292,11 +362,6 @@ function KnowledgeBase() {
     if (q) docs = docs.filter((d) => d.name.toLowerCase().includes(q));
     return docs;
   }, [documents, currentFolder, q]);
-
-  const folderLocationLabel = (folderId: number | null) => {
-    if (folderId == null) return "Knowledge Base (root)";
-    return folders.find((f) => f.id === folderId)?.name ?? "Unknown folder";
-  };
 
   const createFolder = async () => {
     const name = folderName.trim();
@@ -446,6 +511,99 @@ function KnowledgeBase() {
     }
   };
 
+  const applyRequirementToDoc = (docId: number, requirements: Requirement[]) => {
+    setDocuments((docs) =>
+      docs.map((d) =>
+        d.id === docId
+          ? {
+              ...d,
+              requirements,
+              requirementCount: requirements.length,
+              requirementsLoaded: true,
+            }
+          : d,
+      ),
+    );
+  };
+
+  const openAddRequirement = (doc: KbDocument) => {
+    setReqCode("");
+    setReqTitle("");
+    setReqDescription("");
+    setReqModal({ mode: "add", doc });
+  };
+
+  const openEditRequirement = (doc: KbDocument, req: Requirement) => {
+    setReqCode(req.reqCode);
+    setReqTitle(req.title);
+    setReqDescription(req.description);
+    setReqModal({ mode: "edit", doc, req });
+  };
+
+  const submitRequirement = async () => {
+    if (!reqModal) return;
+    const code = reqCode.trim();
+    const title = reqTitle.trim();
+    if (!code || !title) {
+      toast.error("Code and title are required");
+      return;
+    }
+    setReqSaving(true);
+    try {
+      const payload = {
+        req_code: code,
+        title,
+        description: reqDescription.trim(),
+      };
+      // Use latest doc from state so we don't overwrite concurrent edits
+      const current = documents.find((d) => d.id === reqModal.doc.id) ?? reqModal.doc;
+
+      if (reqModal.mode === "add") {
+        const created = await addRequirement(reqModal.doc.id, payload);
+        applyRequirementToDoc(reqModal.doc.id, [...current.requirements, mapRequirement(created)]);
+        toast.success("Requirement added", { description: code });
+      } else if (reqModal.req) {
+        const updated = await updateRequirement(reqModal.doc.id, reqModal.req.id, payload);
+        applyRequirementToDoc(
+          reqModal.doc.id,
+          current.requirements.map((r) =>
+            r.id === updated.id ? mapRequirement(updated) : r,
+          ),
+        );
+        toast.success("Requirement updated", { description: code });
+      }
+      setReqModal(null);
+    } catch (e) {
+      toast.error(
+        reqModal.mode === "add" ? "Could not add requirement" : "Could not update requirement",
+        { description: e instanceof Error ? e.message : "Unknown error" },
+      );
+    } finally {
+      setReqSaving(false);
+    }
+  };
+
+  const confirmDeleteRequirement = async () => {
+    if (!reqToDelete) return;
+    setDeleting(true);
+    try {
+      await deleteRequirement(reqToDelete.doc.id, reqToDelete.req.id);
+      const current = documents.find((d) => d.id === reqToDelete.doc.id) ?? reqToDelete.doc;
+      applyRequirementToDoc(
+        reqToDelete.doc.id,
+        current.requirements.filter((r) => r.id !== reqToDelete.req.id),
+      );
+      toast.success("Requirement deleted", { description: reqToDelete.req.reqCode });
+      setReqToDelete(null);
+    } catch (e) {
+      toast.error("Could not delete requirement", {
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const onUploaded = (_apiDoc: ApiDocument) => {
     refresh();
   };
@@ -541,7 +699,6 @@ function KnowledgeBase() {
             </div>
           ) : (
             <>
-              {/* Folders — one per row (root only) */}
               {!activeFolder && (
                 <div className="mb-6">
                   <div
@@ -560,7 +717,6 @@ function KnowledgeBase() {
                   ) : (
                     <ul className="rounded-md border" style={{ borderColor: BORDER }}>
                       {filteredFolders.map((f) => {
-                        // Always derive from live documents so move/delete stay in sync
                         const count = documents.filter((d) => d.folderId === f.id).length;
                         return (
                           <li
@@ -639,6 +795,9 @@ function KnowledgeBase() {
                       onRename={renameDoc}
                       onDelete={(doc) => setDocToDelete(doc)}
                       onToggleExpand={onToggleExpand}
+                      onEditRequirement={openEditRequirement}
+                      onDeleteRequirement={(doc, req) => setReqToDelete({ doc, req })}
+                      onAddRequirement={openAddRequirement}
                     />
                   ))}
                 </ul>
@@ -793,7 +952,119 @@ function KnowledgeBase() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete document confirmation */}
+      {/* Add / Edit requirement */}
+      <Dialog
+        open={!!reqModal}
+        onOpenChange={(o) => {
+          if (!o) setReqModal(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle style={{ color: INK }}>
+              {reqModal?.mode === "edit" ? "Edit requirement" : "Add requirement"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+                Code
+              </label>
+              <Input
+                value={reqCode}
+                onChange={(e) => setReqCode(e.target.value)}
+                placeholder="e.g. FR-12"
+                className="mt-1.5 h-10 bg-white border-[#E5E7EB] font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+                Title
+              </label>
+              <Input
+                value={reqTitle}
+                onChange={(e) => setReqTitle(e.target.value)}
+                placeholder="Short title"
+                className="mt-1.5 h-10 bg-white border-[#E5E7EB]"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium" style={{ color: SUBTEXT }}>
+                Description
+              </label>
+              <Textarea
+                value={reqDescription}
+                onChange={(e) => setReqDescription(e.target.value)}
+                placeholder="Full requirement text…"
+                rows={4}
+                className="mt-1.5 resize-none bg-white border-[#E5E7EB] text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setReqModal(null)} className="rounded-md">
+              Cancel
+            </Button>
+            <Button
+              onClick={submitRequirement}
+              disabled={reqSaving || !reqCode.trim() || !reqTitle.trim()}
+              className="rounded-md bg-[#1E40AF] hover:bg-[#1E3A8A] text-white shadow-none"
+            >
+              {reqSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving…
+                </>
+              ) : reqModal?.mode === "edit" ? (
+                "Save"
+              ) : (
+                "Add"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete requirement */}
+      <AlertDialog
+        open={!!reqToDelete}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setReqToDelete(null);
+        }}
+      >
+        <AlertDialogContent className="bg-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle style={{ color: INK }}>Delete requirement?</AlertDialogTitle>
+            <AlertDialogDescription style={{ color: SUBTEXT }}>
+              {reqToDelete
+                ? `Remove “${reqToDelete.req.reqCode} — ${reqToDelete.req.title}” from this document. This cannot be undone.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting} className="rounded-md">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                confirmDeleteRequirement();
+              }}
+              disabled={deleting}
+              className="rounded-md bg-[#B91C1C] hover:bg-[#991B1B] text-white"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting…
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete document */}
       <AlertDialog
         open={!!docToDelete}
         onOpenChange={(open) => {
@@ -832,7 +1103,7 @@ function KnowledgeBase() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete folder confirmation */}
+      {/* Delete folder */}
       <AlertDialog
         open={!!folderToDelete}
         onOpenChange={(open) => {

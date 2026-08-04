@@ -7,7 +7,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     try {
       const body = await res.json();
       if (typeof body.detail === "string") detail = body.detail;
-      else if (Array.isArray(body.detail)) detail = body.detail.map((d: { msg?: string }) => d.msg ?? JSON.stringify(d)).join(", ");
+      else if (Array.isArray(body.detail))
+        detail = body.detail.map((d: { msg?: string }) => d.msg ?? JSON.stringify(d)).join(", ");
     } catch {
       /* ignore */
     }
@@ -71,6 +72,15 @@ export async function deleteFolder(folderId: number): Promise<void> {
   await request(`/api/folders/${folderId}`, { method: "DELETE" });
 }
 
+export async function renameFolder(folderId: number, name: string): Promise<ApiFolder> {
+  const data = await request<{ status: string; folder: ApiFolder }>(`/api/folders/${folderId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  return data.folder;
+}
+
 // ---------- Documents ----------
 
 export async function listDocuments(opts?: {
@@ -95,17 +105,14 @@ export async function getDocument(
   return data.document;
 }
 
-export async function uploadDocument(
-  file: File,
-  folderId?: number | null,
-): Promise<ApiDocument> {
+export async function uploadDocument(file: File, folderId?: number | null): Promise<ApiDocument> {
   const form = new FormData();
   form.append("file", file);
   if (folderId != null) form.append("folder_id", String(folderId));
-  const data = await request<{ status: string; document: ApiDocument }>(
-    "/api/documents/upload",
-    { method: "POST", body: form },
-  );
+  const data = await request<{ status: string; document: ApiDocument }>("/api/documents/upload", {
+    method: "POST",
+    body: form,
+  });
   return data.document;
 }
 
@@ -124,10 +131,7 @@ export async function moveDocument(
   return data.document;
 }
 
-export async function renameDocument(
-  documentId: number,
-  filename: string,
-): Promise<ApiDocument> {
+export async function renameDocument(documentId: number, filename: string): Promise<ApiDocument> {
   const data = await request<{ status: string; document: ApiDocument }>(
     `/api/documents/${documentId}/rename`,
     {
@@ -149,14 +153,45 @@ export async function searchDocuments(): Promise<ApiSearchDocument[]> {
   );
   return data.documents;
 }
-export async function renameFolder(folderId: number, name: string): Promise<ApiFolder> {
-  const data = await request<{ status: string; folder: ApiFolder }>(
-    `/api/folders/${folderId}`,
+
+// ---------- Requirements ----------
+
+export async function addRequirement(
+  documentId: number,
+  payload: { req_code: string; title: string; description: string },
+): Promise<ApiRequirement> {
+  const data = await request<{ status: string; requirement: ApiRequirement }>(
+    `/api/documents/${documentId}/requirements`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  return data.requirement;
+}
+
+export async function updateRequirement(
+  documentId: number,
+  requirementId: number,
+  payload: { req_code: string; title: string; description: string },
+): Promise<ApiRequirement> {
+  const data = await request<{ status: string; requirement: ApiRequirement }>(
+    `/api/documents/${documentId}/requirements/${requirementId}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(payload),
     },
   );
-  return data.folder;
+  return data.requirement;
+}
+
+export async function deleteRequirement(
+  documentId: number,
+  requirementId: number,
+): Promise<void> {
+  await request(`/api/documents/${documentId}/requirements/${requirementId}`, {
+    method: "DELETE",
+  });
 }
